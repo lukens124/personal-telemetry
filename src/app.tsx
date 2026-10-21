@@ -1,104 +1,61 @@
-import { useState } from 'preact/hooks'
-import heroImg from './assets/hero.png'
-import preactLogo from './assets/preact.svg'
-import viteLogo from './assets/vite.svg'
-import './app.css'
+import { useMemo, useRef, useState } from 'preact/hooks';
+import { LogHome } from './pages/LogHome';
+import { ManageSheet } from './pages/ManageSheet';
+import { SimpleBench } from './pages/SimpleBench';
+import { TrackHome } from './pages/TrackHome';
+import { WorkoutBench } from './pages/WorkoutBench';
+import { NavContext, type Nav, type Route } from './ui/kit';
 
 export function App() {
-  const [count, setCount] = useState(0)
+  const [stack, setStack] = useState<Route[]>([{ name: 'track' }]);
+  const [manageId, setManageId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const nav = useMemo<Nav>(
+    () => ({
+      go: (r) => {
+        setStack((s) => (r.name === 'track' || r.name === 'log' ? [r] : [...s, r]));
+        window.scrollTo(0, 0);
+      },
+      back: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
+      manage: (id) => setManageId(id),
+      toast: (msg) => {
+        setToast(msg);
+        clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToast(null), 2200);
+      },
+    }),
+    [],
+  );
+
+  const route = stack[stack.length - 1];
+  const isHome = route.name === 'track' || route.name === 'log';
 
   return (
-    <>
-      <section id="center">
-        <div class="hero">
-          <img src={heroImg} class="base" width="170" height="179" alt="" />
-          <img src={preactLogo} class="framework" alt="Preact logo" />
-          <img src={viteLogo} class="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/app.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          class="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <NavContext.Provider value={nav}>
+      {route.name === 'track' && <TrackHome />}
+      {route.name === 'log' && <LogHome />}
+      {route.name === 'workout' && <WorkoutBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
+      {route.name === 'simple' && <SimpleBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
 
-      <div class="ticks"></div>
+      {isHome && (
+        <nav class="tabbar" aria-label="視角">
+          <button aria-current={route.name === 'track' ? 'page' : undefined} onClick={() => nav.go({ name: 'track' })}>
+            🎯 追蹤
+          </button>
+          <button aria-current={route.name === 'log' ? 'page' : undefined} onClick={() => nav.go({ name: 'log' })}>
+            🗂️ 紀錄
+          </button>
+        </nav>
+      )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img class="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://preactjs.com/" target="_blank">
-                <img class="button-icon" src={preactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {manageId && <ManageSheet habitId={manageId} onClose={() => setManageId(null)} />}
+      {toast && (
+        <div class={`toast${isHome && !manageId ? '' : ' low'}`} role="status">
+          {toast}
         </div>
-        <div id="social">
-          <svg class="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg class="button-icon" role="presentation" aria-hidden="true">
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div class="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      )}
+    </NavContext.Provider>
+  );
 }

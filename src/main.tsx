@@ -1,5 +1,13 @@
-import { render } from 'preact'
-import './index.css'
-import { App } from './app.tsx'
+import { render } from 'preact';
+import './index.css';
+import { App } from './app';
+import { db, requestPersistence } from './data/db';
+import { seedIfEmpty } from './data/seed';
 
-render(<App />, document.getElementById('app')!)
+async function boot() {
+  await seedIfEmpty(db);
+  void requestPersistence();
+  render(<App />, document.getElementById('app')!);
+}
+
+void boot();

@@ -118,7 +118,7 @@ export async function seedIfEmpty(db: TelemetryDB, now = new Date()): Promise<bo
         weekly_target: 2,
         config: {
           fields: [
-            { key: 'distance_km', label: '距離', type: 'number', unit: 'km', step: 0.1 },
+            { key: 'distance_km', label: '距離', type: 'number', unit: 'km', step: 1 },
             { key: 'duration_min', label: '時間', type: 'duration' },
           ],
           has_text: true,
