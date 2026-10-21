@@ -8,6 +8,7 @@ import { db } from '../data/db';
 import { listHabits, randomRecall, timeline } from '../data/repo';
 import type { HabitLog, ReadingPayload } from '../data/types';
 import { shortDate, useNav } from '../ui/kit';
+import { TopActions } from '../ui/TopActions';
 
 export function LogHome() {
   const nav = useNav();
@@ -49,7 +50,10 @@ export function LogHome() {
     <main class="screen">
       <header class="topbar">
         <h1>紀錄</h1>
-        <button class="icon-btn primary" onClick={add}>＋ 新增</button>
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <button class="icon-btn primary" onClick={add}>＋ 新增</button>
+          <TopActions />
+        </span>
       </header>
 
       <button class="card" style={{ width: '100%', textAlign: 'left', display: 'block' }}

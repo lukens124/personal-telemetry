@@ -9,7 +9,8 @@ export type Route =
   | { name: 'track' }
   | { name: 'log' }
   | { name: 'workout'; habitId: string; entryId?: string }
-  | { name: 'simple'; habitId: string; entryId?: string };
+  | { name: 'simple'; habitId: string; entryId?: string }
+  | { name: 'settings' };
 
 export interface Nav {
   go: (r: Route) => void;

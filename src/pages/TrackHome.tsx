@@ -16,6 +16,7 @@ import { FLAG_DONE, FLAG_SKIP, type Habit, type HabitLog } from '../data/types';
 import type { WeekRow } from '../logic/grid';
 import { summarize } from '../logic/summary';
 import { haptic, useNav, useRowGesture } from '../ui/kit';
+import { TopActions } from '../ui/TopActions';
 
 /** 跨午夜或從背景回來時刷新「今天」 */
 export function useToday(): Date {
@@ -107,7 +108,7 @@ export function TrackHome() {
     <main class="screen">
       <header class="topbar">
         <h1>{dateLabel}</h1>
-        <span class="sub">本週</span>
+        <TopActions />
       </header>
 
       <section class="grid" aria-label="本週習慣網格">

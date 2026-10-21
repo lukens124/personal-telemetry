@@ -1,7 +1,13 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Container, Habit, HabitLog } from './types';
 
+export interface MetaRow {
+  key: string;
+  value: unknown;
+}
+
 export type TelemetryDB = Dexie & {
+  meta: EntityTable<MetaRow, 'key'>;
   habits: EntityTable<Habit, 'habit_id'>;
   containers: EntityTable<Container, 'container_id'>;
   logs: EntityTable<HabitLog, 'log_id'>;
@@ -14,6 +20,8 @@ export function createDB(name = 'Personal_Telemetry_DB'): TelemetryDB {
     containers: 'container_id, habit_id, status, dirty',
     logs: 'log_id, habit_id, kind, local_date, timestamp, container_id, dirty, [habit_id+local_date], [habit_id+kind]',
   });
+  // v2：同步設定與狀態
+  db.version(2).stores({ meta: 'key' });
   return db;
 }
 

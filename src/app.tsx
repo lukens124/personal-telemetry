@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { LogHome } from './pages/LogHome';
 import { ManageSheet } from './pages/ManageSheet';
+import { Settings } from './pages/Settings';
 import { SimpleBench } from './pages/SimpleBench';
 import { TrackHome } from './pages/TrackHome';
 import { WorkoutBench } from './pages/WorkoutBench';
@@ -37,6 +38,7 @@ export function App() {
       {route.name === 'track' && <TrackHome />}
       {route.name === 'log' && <LogHome />}
       {route.name === 'workout' && <WorkoutBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
+      {route.name === 'settings' && <Settings />}
       {route.name === 'simple' && <SimpleBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
 
       {isHome && (
