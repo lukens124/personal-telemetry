@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/personal-telemetry/sw.js', { scope: '/personal-telemetry/' })})}
