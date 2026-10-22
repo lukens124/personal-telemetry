@@ -33,7 +33,11 @@ export function summarize(habit: Habit, container: Container | null, payload: Re
     }
     case 'COFFEE': {
       const p = payload as unknown as CoffeePayload;
-      const parts = [container?.name, p.grinder, `${p.temp_c}°C`, `${p.grind}格`, `1:${p.ratio}`].filter(Boolean);
+      const recipe =
+        p.dose_g != null && p.ratio == null
+          ? [`${p.dose_g}g→${p.yield_g ?? '?'}g`, p.time_s != null ? `${p.time_s}s` : '']
+          : [p.ratio != null ? `1:${p.ratio}` : ''];
+      const parts = [container?.name, p.grinder, `${p.temp_c}°C`, `${p.grind}格`, ...recipe].filter(Boolean);
       return parts.join(' · ') + (p.rating != null ? ` (★${p.rating})` : '');
     }
     case 'READING': {

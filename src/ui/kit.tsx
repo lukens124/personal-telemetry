@@ -10,12 +10,14 @@ export type Route =
   | { name: 'log' }
   | { name: 'workout'; habitId: string; entryId?: string }
   | { name: 'simple'; habitId: string; entryId?: string }
+  | { name: 'coffee'; habitId: string; entryId?: string }
   | { name: 'settings' };
 
 export interface Nav {
   go: (r: Route) => void;
   back: () => void;
   manage: (habitId: string) => void;
+  newHabit: (tab: 'TRACK' | 'LOG') => void;
   toast: (msg: string) => void;
 }
 export const NavContext = createContext<Nav>(null as unknown as Nav);
@@ -49,8 +51,9 @@ export function haptic() {
 export interface RowGestureHandlers {
   /** x 為點擊位置佔列寬的比例 (0~1) */
   onTap: (xRatio: number) => void;
-  onSwipeLeft: () => void;
-  onLongPress: () => void;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
+  onLongPress?: () => void;
 }
 
 const SWIPE_THRESHOLD = 72;
@@ -73,11 +76,12 @@ export function useRowGesture(h: RowGestureHandlers) {
     const s = st.current;
     Object.assign(s, { x: e.clientX, y: e.clientY, active: true, moved: false, horiz: false, long: false });
     clear();
+    if (!hRef.current.onLongPress) return;
     s.timer = setTimeout(() => {
       if (!s.moved) {
         s.long = true;
         haptic();
-        hRef.current.onLongPress();
+        hRef.current.onLongPress?.();
       }
     }, LONG_PRESS_MS);
   };
@@ -90,7 +94,8 @@ export function useRowGesture(h: RowGestureHandlers) {
     if (!s.moved && (Math.abs(mx) > MOVE_TOLERANCE || Math.abs(my) > MOVE_TOLERANCE)) {
       s.moved = true;
       clear();
-      s.horiz = Math.abs(mx) > Math.abs(my);
+      const allowed = mx < 0 ? !!hRef.current.onSwipeLeft : !!hRef.current.onSwipeRight;
+      s.horiz = Math.abs(mx) > Math.abs(my) && allowed;
       if (s.horiz) {
         setDragging(true);
         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -98,7 +103,11 @@ export function useRowGesture(h: RowGestureHandlers) {
         s.active = false; // 垂直捲動
       }
     }
-    if (s.horiz) setDx(Math.max(-SWIPE_MAX, Math.min(0, mx)));
+    if (s.horiz) {
+      const lo = hRef.current.onSwipeLeft ? -SWIPE_MAX : 0;
+      const hi = hRef.current.onSwipeRight ? SWIPE_MAX : 0;
+      setDx(Math.max(lo, Math.min(hi, mx)));
+    }
   };
 
   const finish = (e: PointerEvent, cancelled = false) => {
@@ -114,9 +123,12 @@ export function useRowGesture(h: RowGestureHandlers) {
     if (s.horiz) {
       const mx = e.clientX - s.x;
       setDx(0);
-      if (mx <= -SWIPE_THRESHOLD) {
+      if (mx <= -SWIPE_THRESHOLD && hRef.current.onSwipeLeft) {
         haptic();
         hRef.current.onSwipeLeft();
+      } else if (mx >= SWIPE_THRESHOLD && hRef.current.onSwipeRight) {
+        haptic();
+        hRef.current.onSwipeRight();
       }
       return;
     }
@@ -132,7 +144,7 @@ export function useRowGesture(h: RowGestureHandlers) {
     ref,
     dx,
     dragging,
-    revealed: dx <= -SWIPE_THRESHOLD,
+    revealed: Math.abs(dx) >= SWIPE_THRESHOLD,
     bind: {
       onPointerDown,
       onPointerMove,

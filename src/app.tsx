@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
+import { CoffeeBench } from './pages/CoffeeBench';
 import { LogHome } from './pages/LogHome';
+import { NewHabitSheet } from './pages/NewHabitSheet';
 import { ManageSheet } from './pages/ManageSheet';
 import { Settings } from './pages/Settings';
 import { SimpleBench } from './pages/SimpleBench';
@@ -10,6 +12,7 @@ import { NavContext, type Nav, type Route } from './ui/kit';
 export function App() {
   const [stack, setStack] = useState<Route[]>([{ name: 'track' }]);
   const [manageId, setManageId] = useState<string | null>(null);
+  const [newTab, setNewTab] = useState<'TRACK' | 'LOG' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -21,6 +24,7 @@ export function App() {
       },
       back: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
       manage: (id) => setManageId(id),
+      newHabit: (tab) => setNewTab(tab),
       toast: (msg) => {
         setToast(msg);
         clearTimeout(toastTimer.current);
@@ -39,6 +43,7 @@ export function App() {
       {route.name === 'log' && <LogHome />}
       {route.name === 'workout' && <WorkoutBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
       {route.name === 'settings' && <Settings />}
+      {route.name === 'coffee' && <CoffeeBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
       {route.name === 'simple' && <SimpleBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
 
       {isHome && (
@@ -53,8 +58,9 @@ export function App() {
       )}
 
       {manageId && <ManageSheet habitId={manageId} onClose={() => setManageId(null)} />}
+      {newTab && <NewHabitSheet tab={newTab} onClose={() => setNewTab(null)} />}
       {toast && (
-        <div class={`toast${isHome && !manageId ? '' : ' low'}`} role="status">
+        <div class={`toast${isHome && !manageId && !newTab ? '' : ' low'}`} role="status">
           {toast}
         </div>
       )}

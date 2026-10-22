@@ -140,8 +140,12 @@ export interface CoffeePayload {
   grinder: string;
   temp_c: number;
   grind: number;
-  /** 粉水比 1:x 的 x；義式模式可改用 dose/yield */
-  ratio: number;
+  /** 手沖：粉水比 1:x 的 x */
+  ratio?: number;
+  /** 義式：粉量 / 萃取量 (g) / 萃取時間 (秒) */
+  dose_g?: number;
+  yield_g?: number;
+  time_s?: number;
   rating?: number;
   flavors?: string[];
   note?: string;

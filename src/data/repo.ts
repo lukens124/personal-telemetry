@@ -379,3 +379,8 @@ export async function bindWeekday(
     }
   });
 }
+
+/** 刪除習慣 (軟刪除；紀錄保留在資料庫與雲端試算表，只是不再顯示) */
+export async function deleteHabit(db: TelemetryDB, habit_id: string, now: Date) {
+  await db.habits.update(habit_id, { deleted: 1, ...touch(now) });
+}

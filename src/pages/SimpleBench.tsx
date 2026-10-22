@@ -1,12 +1,11 @@
 /**
- * 閱讀/語言 (READING) 與通用 (GENERIC) 工作台。
- * P3 會擴充成完整的 2.0-C / 2.0-D；目前提供日常記錄所需的核心功能。
+ * Page 2.0-C 閱讀/語言 (READING) 與 Page 2.0-D 通用 (GENERIC) 工作台。
  */
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { createContainer, deleteEntry, listContainers, listEntries, saveEntry, updateEntry } from '../data/repo';
-import type { GenericConfig, GenericPayload, NoteNature, ReadingConfig, ReadingPayload } from '../data/types';
+import type { Container, GenericConfig, GenericPayload, HabitLog, NoteNature, ReadingConfig, ReadingPayload } from '../data/types';
 import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: string }) {
@@ -26,6 +25,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const [nature, setNature] = useState<NoteNature>('INSIGHT');
   const [example, setExample] = useState('');
   const [page, setPage] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [showMore, setShowMore] = useState(false);
   // 共用文字
   const [text, setText] = useState('');
@@ -45,6 +45,8 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
         setText(p.text);
         setExample(p.example ?? '');
         setPage(p.page ?? '');
+        setTags(p.tags ?? []);
+        setShowMore(!!(p.example || p.page || p.tags?.length));
       } else {
         const p = editing.payload as unknown as GenericPayload;
         setValues(p.values ?? {});
@@ -73,7 +75,6 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const gcfg = habit.config as GenericConfig;
   const containerLabel = isReading ? '書籍 / 來源' : gcfg.container_label;
   const showContainer = isReading || !!gcfg.container_label || active.length > 0;
-  const nameOf = (id: string | null) => all.find((c) => c.container_id === id)?.name ?? '';
 
   const addContainer = async () => {
     const name = prompt(`新增${containerLabel ?? '分類'}名稱`)?.trim();
@@ -85,7 +86,13 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const buildPayload = (): Record<string, unknown> | null => {
     if (isReading) {
       if (!text.trim()) return null;
-      const p: ReadingPayload = { nature, text: text.trim(), ...(example && { example }), ...(page && { page }) };
+      const p: ReadingPayload = {
+        nature,
+        text: text.trim(),
+        ...(example.trim() && { example: example.trim() }),
+        ...(page.trim() && { page: page.trim() }),
+        ...(tags.length && { tags }),
+      };
       return p as unknown as Record<string, unknown>;
     }
     const p: GenericPayload = { values, text };
@@ -111,6 +118,12 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   };
 
   const over = isReading && text.length > rcfg.max_chars;
+  const knownTags = [...new Set(entries.flatMap((e) => (e.payload as unknown as ReadingPayload | null)?.tags ?? []))];
+  const tagChoices = [...knownTags, ...tags.filter((t) => !knownTags.includes(t))];
+  const addTag = () => {
+    const t = prompt('新增主題標籤')?.trim().replace(/^#/, '');
+    if (t && !tags.includes(t)) setTags((xs) => [...xs, t]);
+  };
 
   return (
     <main class="screen no-tabs">
@@ -161,7 +174,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
               </div>
             </div>
             <button class="link-btn" onClick={() => setShowMore((v) => !v)}>
-              {showMore ? '▾' : '▸'} 補充例句與頁碼
+              {showMore ? '▾' : '▸'} 補充例句、頁碼與標籤{tags.length ? `（${tags.map((t) => `#${t}`).join(' ')}）` : ''}
             </button>
             {showMore && (
               <div style={{ display: 'grid', gap: '8px', marginTop: '6px' }}>
@@ -169,6 +182,15 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
                   onInput={(e) => setExample((e.currentTarget as HTMLInputElement).value)} />
                 <input class="text-input" placeholder="頁碼" value={page}
                   onInput={(e) => setPage((e.currentTarget as HTMLInputElement).value)} />
+                <div class="chips" aria-label="主題標籤">
+                  {tagChoices.map((t) => (
+                    <button type="button" class="chip" aria-pressed={tags.includes(t)}
+                      onClick={() => setTags((xs) => (xs.includes(t) ? xs.filter((x) => x !== t) : [...xs, t]))}>
+                      #{t}
+                    </button>
+                  ))}
+                  <button type="button" class="chip" onClick={addTag}>＋ 標籤</button>
+                </div>
               </div>
             )}
           </>
@@ -205,24 +227,100 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
         <div class="btn-row"><button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button></div>
       )}
 
-      <div class="section-title"><span>歷史</span><span>{entries.length} 則</span></div>
-      {entries.length === 0 ? (
-        <div class="empty">還沒有紀錄。</div>
+      {isReading ? (
+        <ReadingHistory entries={entries} containers={all} onOpen={(id) => nav.go({ name: 'simple', habitId, entryId: id })} />
       ) : (
-        <ul class="history">
-          {entries.slice(0, 40).map((e) => (
-            <li>
-              <button onClick={() => nav.go({ name: 'simple', habitId, entryId: e.log_id })}>
-                <span class="date">{shortDate(e.local_date)}</span>
-                <span>
-                  {isReading && <span class="tag">{nameOf(e.container_id)}</span>}
-                  {e.summary_text || '（無內容）'}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div class="section-title"><span>歷史</span><span>{entries.length} 則</span></div>
+          {entries.length === 0 ? (
+            <div class="empty">還沒有紀錄。</div>
+          ) : (
+            <ul class="history">
+              {entries.slice(0, 60).map((e) => (
+                <li>
+                  <button onClick={() => nav.go({ name: 'simple', habitId, entryId: e.log_id })}>
+                    <span class="date">{shortDate(e.local_date)}</span>
+                    <span>{e.summary_text || '（無內容）'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </main>
+  );
+}
+
+const NATURE_ICON: Record<NoteNature, string> = { INSIGHT: '💡', STATUS: '📌', CHUNK: '🗣️' };
+
+/** 2.0-C 下方：📖 依書櫃 / 🏷️ 依主題 雙視角 */
+function ReadingHistory(props: { entries: HabitLog[]; containers: Container[]; onOpen: (id: string) => void }) {
+  const { entries, containers, onOpen } = props;
+  const [view, setView] = useState<'SHELF' | 'TAG'>('SHELF');
+  const [open, setOpen] = useState<Set<string>>(() => new Set(containers.filter((c) => c.status === 'ACTIVE').slice(0, 1).map((c) => c.container_id)));
+  const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  const groups: { key: string; title: string; section?: string; items: HabitLog[] }[] = [];
+  if (view === 'SHELF') {
+    for (const status of ['ACTIVE', 'ARCHIVED'] as const) {
+      for (const c of containers.filter((x) => x.status === status)) {
+        const items = entries.filter((e) => e.container_id === c.container_id);
+        if (status === 'ARCHIVED' && items.length === 0) continue;
+        groups.push({ key: c.container_id, title: c.name, section: status === 'ACTIVE' ? '進行中' : '已封存', items });
+      }
+    }
+  } else {
+    const byTag = new Map<string, HabitLog[]>();
+    for (const e of entries) {
+      const tags = (e.payload as unknown as ReadingPayload | null)?.tags ?? [];
+      for (const t of tags.length ? tags : ['（未加標籤）']) byTag.set(t, [...(byTag.get(t) ?? []), e]);
+    }
+    for (const [t, items] of [...byTag.entries()].sort((a, b) => b[1].length - a[1].length)) {
+      groups.push({ key: `#${t}`, title: t.startsWith('（') ? t : `#${t}`, items });
+    }
+  }
+
+  let lastSection = '';
+  return (
+    <>
+      <div class="section-title">
+        <Seg<'SHELF' | 'TAG'> value={view} onChange={setView} options={[['SHELF', '📖 依書櫃'], ['TAG', '🏷️ 依主題']]} />
+        <span>{entries.length} 則</span>
+      </div>
+      {entries.length === 0 && groups.length === 0 && <div class="empty">還沒有筆記。</div>}
+      {groups.map((g) => {
+        const head = g.section && g.section !== lastSection ? <div class="field-label" style={{ marginTop: '12px' }}>【{g.section}】</div> : null;
+        lastSection = g.section ?? lastSection;
+        const isOpen = open.has(g.key);
+        return (
+          <>
+            {head}
+            <div class="shelf">
+              <button class="shelf-head" aria-expanded={isOpen} onClick={() => toggle(g.key)}>
+                <span>{isOpen ? '▾' : '▸'} {g.title}</span>
+                <span class="field-label" style={{ margin: 0 }}>{g.items.length} 則</span>
+              </button>
+              {isOpen && (
+                <ul class="history">
+                  {g.items.length === 0 && <li class="field-label" style={{ padding: '8px 2px' }}>還沒有筆記。</li>}
+                  {g.items.map((e) => {
+                    const p = e.payload as unknown as ReadingPayload;
+                    return (
+                      <li>
+                        <button onClick={() => onOpen(e.log_id)}>
+                          <span class="date">{shortDate(e.local_date)}</span>
+                          <span>{NATURE_ICON[p.nature] ?? ''} {p.text}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </>
+        );
+      })}
+    </>
   );
 }

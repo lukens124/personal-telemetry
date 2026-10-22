@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'preact/hooks';
 import { db } from '../data/db';
-import { bindWeekday, createContainer, listContainers, updateContainer, updateHabit } from '../data/repo';
-import type { Container, Habit, IsoWeekday, WorkoutConfig } from '../data/types';
-import { Stepper, WeekdayChips } from '../ui/kit';
+import { bindWeekday, createContainer, deleteHabit, listContainers, updateContainer, updateHabit } from '../data/repo';
+import type { CoffeeConfig, CoffeeMode, Container, Habit, IsoWeekday, WorkoutConfig } from '../data/types';
+import { Stepper, useNav, WeekdayChips } from '../ui/kit';
 
 const LABELS: Record<Habit['engine_type'], string> = {
   WORKOUT: '課表',
@@ -20,6 +20,7 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
     return { habit, containers };
   }, [habitId]);
   const [showArchived, setShowArchived] = useState(false);
+  const nav = useNav();
 
   const habit = data?.habit;
   const now = () => new Date();
@@ -51,6 +52,29 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
   };
 
   const cycle = habit?.engine_type === 'WORKOUT' ? (habit.config as WorkoutConfig).cycle : null;
+  const coffee = habit?.engine_type === 'COFFEE' ? (habit.config as CoffeeConfig) : null;
+
+  const setCoffee = (c: CoffeeConfig) => habit && void updateHabit(db, habit.habit_id, { config: c }, now());
+  const addGrinder = () => {
+    if (!coffee) return;
+    const g = prompt('新增磨豆機型號')?.trim();
+    if (g && !coffee.grinders.includes(g)) setCoffee({ ...coffee, grinders: [...coffee.grinders, g] });
+  };
+  const removeGrinder = (g: string) => {
+    if (!coffee || !confirm(`移除「${g}」？歷史紀錄不受影響。`)) return;
+    const dg = { ...coffee.default_grinder };
+    for (const k of Object.keys(dg) as CoffeeMode[]) if (dg[k] === g) delete dg[k];
+    setCoffee({ grinders: coffee.grinders.filter((x) => x !== g), default_grinder: dg });
+  };
+
+  const remove = async () => {
+    if (!habit) return;
+    if (!confirm(`刪除「${habit.name}」？\n項目會從 App 隱藏，歷史紀錄仍保留在雲端試算表。`)) return;
+    await deleteHabit(db, habit.habit_id, now());
+    onClose();
+    nav.go({ name: habit.category_tab === 'TRACK' ? 'track' : 'log' });
+    nav.toast(`已刪除「${habit.name}」`);
+  };
 
   return (
     <div class="sheet-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -95,6 +119,34 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
               </div>
             )}
 
+            {coffee && (
+              <div class="card">
+                <span class="field-label">磨豆機與模式預設</span>
+                {coffee.grinders.length === 0 && <div class="field-label">還沒有磨豆機。</div>}
+                {coffee.grinders.map((g) => (
+                  <div class="container-item">
+                    <div class="line">
+                      <span style={{ flex: 1 }}>⚙️ {g}</span>
+                      <button class="link-btn danger" onClick={() => removeGrinder(g)}>移除</button>
+                    </div>
+                  </div>
+                ))}
+                <div class="btn-row"><button class="link-btn" onClick={addGrinder}>＋ 新增磨豆機</button></div>
+                <div class="param-grid">
+                  {(['POUR_OVER', 'ESPRESSO'] as CoffeeMode[]).map((m) => (
+                    <>
+                      <span>{m === 'POUR_OVER' ? '手沖預設' : '義式預設'}</span>
+                      <select class="select" value={coffee.default_grinder[m] ?? ''}
+                        onChange={(e) => setCoffee({ ...coffee, default_grinder: { ...coffee.default_grinder, [m]: (e.currentTarget as HTMLSelectElement).value || undefined } })}>
+                        <option value="">（不指定）</option>
+                        {coffee.grinders.map((g) => <option value={g}>{g}</option>)}
+                      </select>
+                    </>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div class="section-title">
               <span>{containerLabel}{habit.engine_type === 'WORKOUT' ? '與星期綁定' : ''}</span>
               <button class="link-btn" onClick={addContainer}>＋ 新增</button>
@@ -118,6 +170,9 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
                 )}
               </>
             )}
+            <div class="btn-row" style={{ marginTop: '24px', justifyContent: 'center' }}>
+              <button class="link-btn danger" onClick={remove}>刪除「{habit.name}」</button>
+            </div>
           </>
         )}
       </div>

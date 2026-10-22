@@ -17,6 +17,7 @@ import type { WeekRow } from '../logic/grid';
 import { summarize } from '../logic/summary';
 import { haptic, useNav, useRowGesture } from '../ui/kit';
 import { TopActions } from '../ui/TopActions';
+import { benchRoute } from '../ui/routes';
 
 /** 跨午夜或從背景回來時刷新「今天」 */
 export function useToday(): Date {
@@ -76,6 +77,7 @@ async function describe(habit: Habit, now: Date): Promise<{ detail: string; badg
 
 export function TrackHome() {
   const now = useToday();
+  const nav = useNav();
   const todayKey = toLocalDate(now);
 
   const data = useLiveQuery(async () => {
@@ -163,6 +165,9 @@ export function TrackHome() {
         </>
       )}
 
+      <div class="btn-row" style={{ justifyContent: 'center' }}>
+        <button class="link-btn" onClick={() => nav.newHabit('TRACK')}>＋ 新增追蹤項目</button>
+      </div>
       <p class="hint">左側打卡 · 右側進工作台 · 左滑略過 · 長按管理</p>
     </main>
   );
@@ -175,7 +180,7 @@ function HabitRow({ item }: { item: ItemView }) {
   const skip = flag === FLAG_SKIP;
   const h = item.habit;
 
-  const openBench = () => nav.go({ name: h.engine_type === 'WORKOUT' ? 'workout' : 'simple', habitId: h.habit_id });
+  const openBench = () => nav.go(benchRoute(h));
 
   const g = useRowGesture({
     onTap: async (x) => {
