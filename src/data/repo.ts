@@ -18,10 +18,12 @@ import {
   type SyncFields,
   type WorkoutConfig,
   type WorkoutMode,
+  type WorkoutPayload,
 } from './types';
 import { cycleStatus, type CycleStatus } from '../logic/cycle';
 import { computeWeekRow, isOnTodayList, type WeekRow } from '../logic/grid';
 import { summarize } from '../logic/summary';
+import { markAllDone, nextTemplate } from '../logic/workout';
 
 export const uid = () => crypto.randomUUID();
 
@@ -158,7 +160,8 @@ export async function quickCheckin(db: TelemetryDB, habit: Habit, now: Date): Pr
   if (habit.engine_type === 'WORKOUT') {
     const container = await findBoundContainer(db, habit.habit_id, isoWeekday(today));
     if (!container) return { status: 'NEEDS_WORKBENCH' };
-    const payload = container.last_payload ?? container.default_payload;
+    const template = (container.last_payload ?? container.default_payload) as unknown as WorkoutPayload | null;
+    const payload = template ? (markAllDone(template) as unknown as Record<string, unknown>) : null;
     const mode = (await workoutCycle(db, habit)).suggested;
     return db.transaction('rw', db.logs, db.containers, db.habits, async () => {
       const entry = await saveEntry(db, habit, { container_id: container.container_id, sub_mode: mode, payload }, now);
@@ -220,7 +223,16 @@ export async function saveEntry(db: TelemetryDB, habit: Habit, input: EntryInput
 
   await db.transaction('rw', db.logs, db.containers, db.habits, async () => {
     await db.logs.add(entry);
-    if (container) await db.containers.update(container.container_id, { last_payload: input.payload, ...touch(now) });
+    if (container) {
+      const last =
+        habit.engine_type === 'WORKOUT' && input.payload
+          ? (nextTemplate(
+              (container.last_payload ?? container.default_payload) as unknown as WorkoutPayload | null,
+              input.payload as unknown as WorkoutPayload,
+            ) as unknown as Record<string, unknown>)
+          : input.payload;
+      await db.containers.update(container.container_id, { last_payload: last, ...touch(now) });
+    }
     if (habit.engine_type === 'GENERIC' && typeof input.payload?.text === 'string') {
       await db.habits.update(habit.habit_id, { last_state: { template: input.payload.text }, ...touch(now) });
     }

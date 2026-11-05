@@ -737,3 +737,36 @@ textarea.text-input {
   background: var(--panel);
   font-weight: 600;
 }
+
+/* 重訓勾選 */
+.set-check,
+.ex-check {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--line-strong);
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.set-check[aria-pressed='true'],
+.ex-check.all {
+  border-color: var(--done);
+  background: color-mix(in srgb, var(--done) 18%, transparent);
+  color: var(--done);
+  font-size: 18px;
+}
+.ex-check.some {
+  border-color: var(--done);
+  color: var(--done);
+}
+.set-row .stepper {
+  opacity: 0.6;
+}
+.set-row.is-done .stepper {
+  opacity: 1;
+}

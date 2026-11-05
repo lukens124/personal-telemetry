@@ -13,6 +13,7 @@ import {
   workoutCycle,
 } from '../data/repo';
 import type { WorkoutExercise, WorkoutMode, WorkoutPayload } from '../data/types';
+import { countSets, isDone, nextTemplate, toSession } from '../logic/workout';
 import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 const clone = <T,>(x: T): T => structuredClone(x);
@@ -47,7 +48,9 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
     if (data.editing) {
       setContainerId(data.editing.container_id);
       setMode((data.editing.sub_mode as WorkoutMode) ?? 'MAIN');
-      setExercises(clone((data.editing.payload as unknown as WorkoutPayload)?.exercises ?? []));
+      // 舊紀錄沒有 done 欄位 → 視為完成
+      const ex = clone((data.editing.payload as unknown as WorkoutPayload)?.exercises ?? []);
+      setExercises(ex.map((e) => ({ ...e, sets: e.sets.map((st) => ({ ...st, done: isDone(st) })) })));
       return;
     }
     setMode(data.cycle.suggested);
@@ -58,7 +61,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
     setContainerId(id);
     const c = data?.allContainers.find((x) => x.container_id === id);
     const p = (c?.last_payload ?? c?.default_payload) as unknown as WorkoutPayload | null;
-    setExercises(clone(p?.exercises ?? []));
+    setExercises(toSession(p));
   };
 
   if (data === undefined) return <main class="screen no-tabs" />;
@@ -72,11 +75,15 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
 
   const save = async () => {
     if (!containerId) return nav.toast('請先選擇課表');
-    const payload = toPayload({ exercises: exercises.filter((e) => e.name.trim()) });
+    const session: WorkoutPayload = { exercises: exercises.filter((e) => e.name.trim()) };
+    if (countSets(session).done === 0) return nav.toast('至少勾選一組才算完成');
+    const payload = toPayload(session);
     const now = new Date();
     if (editing) {
       await updateEntry(db, habit, editing.log_id, { payload, container_id: containerId, sub_mode: mode }, now);
-      await updateContainer(db, containerId, { last_payload: payload }, now);
+      const c = allContainers.find((x) => x.container_id === containerId);
+      const prev = (c?.last_payload ?? c?.default_payload) as unknown as WorkoutPayload | null;
+      await updateContainer(db, containerId, { last_payload: toPayload(nextTemplate(prev, session)) }, now);
     } else {
       await saveEntry(db, habit, { container_id: containerId, sub_mode: mode, payload, at: at ?? undefined }, now);
     }
@@ -90,6 +97,15 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
     nav.toast('已刪除');
     nav.back();
   };
+
+  const progress = countSets({ exercises });
+  const setAllDone = (v: boolean) => setExercises((xs) => xs.map((e) => ({ ...e, sets: e.sets.map((st) => ({ ...st, done: v })) })));
+  const toggleExercise = (i: number) =>
+    setEx(i, (x) => {
+      const all = x.sets.length > 0 && x.sets.every((st) => st.done);
+      x.sets.forEach((st) => (st.done = !all));
+      return x;
+    });
 
   const containerName = (id: string | null) => allContainers.find((c) => c.container_id === id)?.name ?? '';
   const trail = entries.slice(0, 12).reverse();
@@ -140,11 +156,28 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
 
       {containerId && (
         <>
-          <div class="section-title"><span>動作</span><span>帶入上次{containerName(containerId)}</span></div>
+          <div class="section-title">
+            <span>動作　已完成 {progress.done}/{progress.total} 組</span>
+            {progress.total > 0 && (
+              <button class="link-btn" onClick={() => setAllDone(progress.done < progress.total)}>
+                {progress.done < progress.total ? '全部勾選' : '全部取消'}
+              </button>
+            )}
+          </div>
           {exercises.length === 0 && <div class="empty">這份課表還沒有動作，新增一個開始。</div>}
           {exercises.map((ex, i) => (
             <div class="card exercise">
               <div class="exercise-head">
+                {(() => {
+                  const d = ex.sets.filter((st) => st.done).length;
+                  const state = d === 0 ? '' : d === ex.sets.length ? ' all' : ' some';
+                  return (
+                    <button type="button" class={`ex-check${state}`} aria-label={`${ex.name || '動作'}全部勾選`} aria-pressed={d === ex.sets.length && d > 0}
+                      onClick={() => toggleExercise(i)}>
+                      {d === ex.sets.length && d > 0 ? '✓' : d > 0 ? '–' : ''}
+                    </button>
+                  );
+                })()}
                 <input
                   class="text-input"
                   aria-label={`第 ${i + 1} 個動作名稱`}
@@ -155,8 +188,11 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
                 <button class="link-btn danger" onClick={() => setExercises((xs) => xs.filter((_, j) => j !== i))}>移除</button>
               </div>
               {ex.sets.map((s, k) => (
-                <div class="set-row">
-                  <span class="idx">{k + 1}</span>
+                <div class={`set-row${s.done ? ' is-done' : ''}`}>
+                  <button type="button" class="set-check" aria-pressed={!!s.done} aria-label={`第 ${k + 1} 組${s.done ? '已完成' : '未完成'}`}
+                    onClick={() => setEx(i, (x) => { x.sets[k].done = !x.sets[k].done; return x; })}>
+                    {s.done ? '✓' : k + 1}
+                  </button>
                   <Stepper label="重量" value={s.kg} step={2.5} unit="kg"
                     onChange={(v) => setEx(i, (x) => { x.sets[k].kg = v; return x; })} />
                   <span class="x">×</span>
@@ -167,7 +203,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
               <div class="btn-row">
                 <button class="link-btn" onClick={() => setEx(i, (x) => {
                   const last = x.sets[x.sets.length - 1] ?? { kg: 0, reps: 5 };
-                  x.sets.push({ ...last });
+                  x.sets.push({ kg: last.kg, reps: last.reps, done: false });
                   return x;
                 })}>＋ 加一組</button>
                 {ex.sets.length > 0 && (
@@ -177,7 +213,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
             </div>
           ))}
           <div class="btn-row">
-            <button class="link-btn" onClick={() => setExercises((xs) => [...xs, { name: '', sets: [{ kg: 0, reps: 5 }] }])}>＋ 新增動作</button>
+            <button class="link-btn" onClick={() => setExercises((xs) => [...xs, { name: '', sets: [{ kg: 0, reps: 5, done: false }] }])}>＋ 新增動作</button>
             {editing && <button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button>}
           </div>
         </>

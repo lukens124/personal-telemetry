@@ -126,6 +126,8 @@ export interface HabitLog extends SyncFields {
 export interface WorkoutSet {
   kg: number;
   reps: number;
+  /** 這次是否有做 (僅紀錄使用；課表不存。舊紀錄缺此欄 = 完成) */
+  done?: boolean;
 }
 export interface WorkoutExercise {
   name: string;

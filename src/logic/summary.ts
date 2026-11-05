@@ -25,9 +25,12 @@ export function summarize(habit: Habit, container: Container | null, payload: Re
       return p.exercises
         .filter((e) => e.sets.length > 0)
         .map((e) => {
-          const max = Math.max(...e.sets.map((s) => s.kg));
           const name = SHORT_NAMES[e.name] ?? e.name;
-          return max > 0 ? `${name}${max}` : name;
+          const done = e.sets.filter((s) => s.done !== false);
+          if (done.length === 0) return `${name}(略)`;
+          const max = Math.max(...done.map((s) => s.kg));
+          const partial = done.length < e.sets.length ? `(${done.length}/${e.sets.length})` : '';
+          return (max > 0 ? `${name}${max}` : name) + partial;
         })
         .join(' / ');
     }
