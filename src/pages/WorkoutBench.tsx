@@ -193,7 +193,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
                     onClick={() => setEx(i, (x) => { x.sets[k].done = !x.sets[k].done; return x; })}>
                     {s.done ? '✓' : k + 1}
                   </button>
-                  <Stepper label="重量" value={s.kg} step={2.5} unit="kg"
+                  <Stepper label="重量" value={s.kg} step={1} unit="kg"
                     onChange={(v) => setEx(i, (x) => { x.sets[k].kg = v; return x; })} />
                   <span class="x">×</span>
                   <Stepper label="次數" value={s.reps} step={1} unit="下"

@@ -167,6 +167,14 @@ export function Stepper(props: {
 }) {
   const { value, step, min = 0, unit, onChange, label } = props;
   const round = (v: number) => Math.round(v * 100) / 100;
+  // 輸入中保留原始文字 (例如「62.」)，避免小數點在打字途中被轉成數字吃掉
+  const [draft, setDraft] = useState<string | null>(null);
+  const parse = (raw: string) => parseFloat(raw.replace(',', '.'));
+  const commit = (raw: string) => {
+    const v = parse(raw);
+    onChange(Number.isFinite(v) ? Math.max(min, round(v)) : min);
+    setDraft(null);
+  };
   return (
     <span class="stepper">
       <button type="button" aria-label={`${label}減少`} onClick={() => onChange(Math.max(min, round(value - step)))}>
@@ -175,12 +183,20 @@ export function Stepper(props: {
       <input
         inputMode="decimal"
         aria-label={label}
-        value={String(value)}
-        onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-        onChange={(e) => {
-          const v = parseFloat((e.currentTarget as HTMLInputElement).value);
-          onChange(Number.isFinite(v) ? Math.max(min, v) : min);
+        value={draft ?? String(value)}
+        onFocus={(e) => {
+          setDraft(String(value));
+          (e.currentTarget as HTMLInputElement).select();
         }}
+        onInput={(e) => {
+          const raw = (e.currentTarget as HTMLInputElement).value;
+          if (!/^\d*[.,]?\d*$/.test(raw)) return void ((e.currentTarget as HTMLInputElement).value = draft ?? String(value));
+          setDraft(raw);
+          const v = parse(raw);
+          if (Number.isFinite(v) && !/[.,]$/.test(raw)) onChange(Math.max(min, round(v)));
+        }}
+        onBlur={(e) => commit((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
       />
       <button type="button" aria-label={`${label}增加`} onClick={() => onChange(round(value + step))}>
         +
