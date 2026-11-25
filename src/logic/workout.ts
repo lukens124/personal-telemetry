@@ -43,3 +43,20 @@ export function nextTemplate(prev: WorkoutPayload | null | undefined, session: W
     }),
   };
 }
+
+/**
+ * 修改某組的重量或次數：有改動代表做過了 →
+ * 這一組，以及同一動作前面還沒勾的組，全部自動打勾。後面的組不動。
+ */
+export function editSet(ex: WorkoutExercise, k: number, patch: Partial<Pick<WorkoutSet, 'kg' | 'reps'>>): WorkoutExercise {
+  const cur = ex.sets[k];
+  const changed = (patch.kg != null && patch.kg !== cur.kg) || (patch.reps != null && patch.reps !== cur.reps);
+  return {
+    ...ex,
+    sets: ex.sets.map((s, j) => {
+      if (j === k) return { ...s, ...patch, done: changed ? true : s.done };
+      if (changed && j < k) return { ...s, done: true };
+      return s;
+    }),
+  };
+}

@@ -3,7 +3,7 @@ import { createDB, type TelemetryDB } from '../data/db';
 import { findBoundContainer, listHabits, quickCheckin, saveEntry } from '../data/repo';
 import { seedIfEmpty } from '../data/seed';
 import type { Habit, WorkoutPayload } from '../data/types';
-import { countSets, nextTemplate, toSession } from './workout';
+import { countSets, editSet, nextTemplate, toSession } from './workout';
 
 const TUE = new Date('2026-10-20T07:00:00+08:00');
 const NEXT_TUE = new Date('2026-10-27T07:00:00+08:00');
@@ -67,5 +67,25 @@ describe('存檔流程', () => {
     const r = await quickCheckin(db, gym, TUE);
     const p = (r.status === 'CHECKED' ? r.entry?.payload : null) as unknown as WorkoutPayload;
     expect(countSets(p)).toEqual({ done: 3, total: 3 });
+  });
+});
+
+describe('修改即打勾', () => {
+  const ex = () => toSession(prev)[0]; // 深蹲 3 組，全未勾
+  it('改第 3 組重量：第 1~3 組都打勾', () => {
+    const r = editSet(ex(), 2, { kg: 115 });
+    expect(r.sets.map((s) => s.done)).toEqual([true, true, true]);
+    expect(r.sets[2].kg).toBe(115);
+  });
+  it('改第 2 組次數：第 1~2 組打勾，第 3 組不動', () => {
+    expect(editSet(ex(), 1, { reps: 6 }).sets.map((s) => s.done)).toEqual([true, true, false]);
+  });
+  it('數值沒變 (例如只是點進去再離開) 不打勾', () => {
+    expect(editSet(ex(), 2, { kg: 110 }).sets.map((s) => s.done)).toEqual([false, false, false]);
+  });
+  it('已手動取消的後面組不受影響', () => {
+    const e = ex();
+    e.sets[2].done = false;
+    expect(editSet(e, 0, { kg: 101 }).sets.map((s) => s.done)).toEqual([true, false, false]);
   });
 });

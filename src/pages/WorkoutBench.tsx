@@ -13,7 +13,7 @@ import {
   workoutCycle,
 } from '../data/repo';
 import type { WorkoutExercise, WorkoutMode, WorkoutPayload } from '../data/types';
-import { countSets, isDone, nextTemplate, toSession } from '../logic/workout';
+import { countSets, editSet, isDone, nextTemplate, toSession } from '../logic/workout';
 import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 const clone = <T,>(x: T): T => structuredClone(x);
@@ -194,10 +194,10 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
                     {s.done ? '✓' : k + 1}
                   </button>
                   <Stepper label="重量" value={s.kg} step={1} unit="kg"
-                    onChange={(v) => setEx(i, (x) => { x.sets[k].kg = v; return x; })} />
+                    onChange={(v) => setEx(i, (x) => editSet(x, k, { kg: v }))} />
                   <span class="x">×</span>
                   <Stepper label="次數" value={s.reps} step={1} unit="下"
-                    onChange={(v) => setEx(i, (x) => { x.sets[k].reps = v; return x; })} />
+                    onChange={(v) => setEx(i, (x) => editSet(x, k, { reps: v }))} />
                 </div>
               ))}
               <div class="btn-row">
