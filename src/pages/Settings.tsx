@@ -154,6 +154,7 @@ export function Settings() {
           <button class="link-btn" onClick={doExport}>📤 匯出 JSON 備份</button>
         </div>
       </div>
+      <p class="hint">版本 {__APP_VERSION__}</p>
     </main>
   );
 }
