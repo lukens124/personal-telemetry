@@ -9,6 +9,7 @@ import { duplicateEntry, listHabits, randomRecall, timeline } from '../data/repo
 import type { Container, Habit, HabitLog, ReadingPayload } from '../data/types';
 import { shortDate, useNav, useRowGesture } from '../ui/kit';
 import { benchRoute } from '../ui/routes';
+import { SyncBanner } from '../ui/SyncBanner';
 import { TopActions } from '../ui/TopActions';
 
 const PAGE = 80;
@@ -62,6 +63,8 @@ export function LogHome() {
           <TopActions />
         </span>
       </header>
+
+      <SyncBanner />
 
       <button class="card" style={{ width: '100%', textAlign: 'left', display: 'block' }} onClick={tapRecall}
         aria-label={rp?.example && !expanded ? '展開補充語境' : '換一則'}>

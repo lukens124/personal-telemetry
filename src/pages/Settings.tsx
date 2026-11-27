@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { refreshSyncState, runSync, useSyncState } from '../sync/auto';
+import { pairingLink, parsePairing } from '../sync/pair';
 import { exportJson, getConfig, setConfig } from '../sync/sync';
 import { ConfirmButton, useNav } from '../ui/kit';
 
@@ -23,6 +24,9 @@ export function Settings() {
   const [editing, setEditing] = useState(false);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<string>('');
+  const [pairText, setPairText] = useState('');
+  const [manual, setManual] = useState(false);
+  const [share, setShare] = useState<{ link: string; svg: string } | null>(null);
 
   useEffect(() => {
     void getConfig(db).then((c) => {
@@ -41,8 +45,14 @@ export function Settings() {
   }));
 
   const saveConfig = async () => {
-    const u = url.trim();
-    const t = token.trim();
+    let u = url.trim();
+    let t = token.trim();
+    if (pairText.trim()) {
+      const cfg = parsePairing(pairText);
+      if (!cfg) return nav.toast('配對連結無效，請重新複製');
+      u = cfg.url;
+      t = cfg.token;
+    }
     if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) return nav.toast('網址應以 https://script.google.com/ 開頭、/exec 結尾');
     if (!t) return nav.toast('請貼上 Token');
     await setConfig(db, { url: u, token: t });
@@ -50,8 +60,38 @@ export function Settings() {
     const r = await runSync();
     if (r.status === 'OK') {
       setEditing(false);
+      setPairText('');
+      setUrl(u);
+      setToken(t);
       nav.toast(r.restored ? `已從雲端還原 ${r.pulled} 筆` : '連線成功，已同步');
     } else if (r.status === 'ERROR') nav.toast(r.error);
+  };
+
+  const toggleShare = async () => {
+    if (share) return setShare(null);
+    const cfg = await getConfig(db);
+    if (!cfg) return;
+    const link = pairingLink(cfg);
+    const QRCode = (await import('qrcode')).default; // 用到才載入，不拖慢開啟速度
+    const svg = await QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'L', color: { dark: '#1f2923', light: '#ffffff' } });
+    setShare({ link, svg });
+  };
+  const copyLink = async () => {
+    if (!share) return;
+    try {
+      await navigator.clipboard.writeText(share.link);
+      nav.toast('已複製配對連結');
+    } catch {
+      nav.toast('無法複製，請長按連結手動複製');
+    }
+  };
+  const shareLink = async () => {
+    if (!share) return;
+    try {
+      await navigator.share({ title: '遙測 App 配對連結', url: share.link });
+    } catch {
+      /* 取消 */
+    }
   };
 
   const disconnect = async () => {
@@ -113,18 +153,31 @@ export function Settings() {
         {editing ? (
           <div style={{ display: 'grid', gap: '10px', marginTop: '12px' }}>
             <label>
-              <span class="field-label">網頁應用程式網址</span>
-              <input class="text-input" inputMode="url" autoCapitalize="off" autoCorrect="off"
-                placeholder="https://script.google.com/macros/s/…/exec" value={url}
-                onInput={(e) => setUrl((e.currentTarget as HTMLInputElement).value)} />
+              <span class="field-label">配對連結</span>
+              <textarea class="text-input" style={{ minHeight: '72px' }} autoCapitalize="off" autoCorrect="off"
+                placeholder="在已連線的裝置：設定 → 新增裝置 → 複製連結，貼到這裡"
+                value={pairText} onInput={(e) => setPairText((e.currentTarget as HTMLTextAreaElement).value)} />
             </label>
-            <label>
-              <span class="field-label">Token</span>
-              <input class="text-input" autoCapitalize="off" autoCorrect="off" value={token}
-                onInput={(e) => setToken((e.currentTarget as HTMLInputElement).value)} />
-            </label>
+            <button class="link-btn muted" style={{ justifySelf: 'start' }} onClick={() => setManual((v) => !v)}>
+              {manual ? '▾' : '▸'} 改用網址與 Token（第一次設定）
+            </button>
+            {manual && (
+              <>
+                <label>
+                  <span class="field-label">網頁應用程式網址</span>
+                  <input class="text-input" inputMode="url" autoCapitalize="off" autoCorrect="off"
+                    placeholder="https://script.google.com/macros/s/…/exec" value={url}
+                    onInput={(e) => setUrl((e.currentTarget as HTMLInputElement).value)} />
+                </label>
+                <label>
+                  <span class="field-label">Token</span>
+                  <input class="text-input" autoCapitalize="off" autoCorrect="off" value={token}
+                    onInput={(e) => setToken((e.currentTarget as HTMLInputElement).value)} />
+                </label>
+              </>
+            )}
             <div class="btn-row">
-              <button class="link-btn" onClick={saveConfig} disabled={sync.syncing}>連線並同步</button>
+              <button class="icon-btn primary" onClick={saveConfig} disabled={sync.syncing}>連線並同步</button>
             </div>
           </div>
         ) : (
@@ -135,6 +188,32 @@ export function Settings() {
           </div>
         )}
       </div>
+
+      {sync.configured && !editing && (
+        <>
+          <div class="section-title"><span>📱 新增裝置</span></div>
+          <div class="card">
+            <p class="field-label" style={{ margin: 0 }}>
+              讓另一台裝置 (電腦、iPad…) 連到同一份資料：在那台裝置打開下面的連結，或用相機掃 QR Code。
+              iPhone 主畫面的 App 則是把連結貼到它的設定頁。
+            </p>
+            <div class="btn-row">
+              <button class="link-btn" onClick={() => void toggleShare()}>{share ? '隱藏配對連結' : '顯示配對連結'}</button>
+            </div>
+            {share && (
+              <>
+                <span class="qr" dangerouslySetInnerHTML={{ __html: share.svg }} />
+                <div class="mono">{share.link}</div>
+                <div class="btn-row">
+                  <button class="link-btn" onClick={() => void copyLink()}>複製連結</button>
+                  {typeof navigator.share === 'function' && <button class="link-btn" onClick={() => void shareLink()}>分享…</button>}
+                </div>
+                <p class="field-label" style={{ color: 'var(--miss)' }}>這個連結等同雲端鑰匙，只傳給自己的裝置。</p>
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       <div class="section-title"><span>💾 本機資料</span></div>
       <div class="card">

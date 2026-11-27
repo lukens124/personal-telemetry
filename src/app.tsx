@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CardioBench } from './pages/CardioBench';
 import { CoffeeBench } from './pages/CoffeeBench';
 import { LogHome } from './pages/LogHome';
@@ -10,7 +10,7 @@ import { TrackHome } from './pages/TrackHome';
 import { WorkoutBench } from './pages/WorkoutBench';
 import { NavContext, type Nav, type Route } from './ui/kit';
 
-export function App() {
+export function App({ notice = null }: { notice?: string | null }) {
   const [stack, setStack] = useState<Route[]>([{ name: 'track' }]);
   const [manageId, setManageId] = useState<string | null>(null);
   const [newTab, setNewTab] = useState<'TRACK' | 'LOG' | null>(null);
@@ -34,6 +34,10 @@ export function App() {
     }),
     [],
   );
+
+  useEffect(() => {
+    if (notice) nav.toast(notice);
+  }, []);
 
   const route = stack[stack.length - 1];
   const isHome = route.name === 'track' || route.name === 'log';

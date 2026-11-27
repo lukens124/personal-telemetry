@@ -17,6 +17,7 @@ import { cardioWeek, fmtDuration } from '../logic/cardio';
 import type { WeekRow } from '../logic/grid';
 import { summarize } from '../logic/summary';
 import { haptic, useNav, useRowGesture } from '../ui/kit';
+import { SyncBanner } from '../ui/SyncBanner';
 import { TopActions } from '../ui/TopActions';
 import { benchRoute } from '../ui/routes';
 
@@ -131,6 +132,8 @@ export function TrackHome() {
         <h1>{dateLabel}</h1>
         <TopActions />
       </header>
+
+      <SyncBanner />
 
       <section class="grid" aria-label="本週習慣網格">
         <div class="grid-head">
