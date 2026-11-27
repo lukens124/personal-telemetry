@@ -47,3 +47,12 @@
 - 騎車 / 跑步 / 其他 → CARDIO 的 ENTRY；騎車沒有距離 = 室內台。並寫入當天 CHECKIN (完成)。
 - 肌力訓練 → 重訓習慣的 `kind = HEALTH` 列 (時間、熱量、心率)，並打卡；不算重訓 ENTRY，不推進 N:M。
 - 由 GAS 直接寫入 Habit_Logs，App 透過既有增量同步拉下來；RPE 等補充為選填，不主動提醒。
+
+## 多人雲端 (v4.3)
+
+- 同一份 `Code.gs` 支援「自架」與「社團雲端」。管理者 Token 存在 Script Properties (`SYNC_TOKEN`)，成員 Token 存在「成員」分頁 (名字 / 成員ID / Token / 狀態 / 邀請連結 / 建立時間 / 最後同步)。
+- 三個資料分頁最後一欄 `owner_id`：空白 = 管理者 (舊資料相容)，`m_xxxx` = 成員。同步、計數、健康匯入一律只看自己的列；同 id 以 (owner, id) 區分。
+- 狀態不是 `ACTIVE` 的成員回 `UNAUTHORIZED`。
+- 回應附 `member: {name, role: owner|member, space}`，App 存在 meta `cloud_member`，設定頁顯示存放位置與隱私說明。
+- 配對 / 邀請連結：`<App 網址>#pair=<base64url({u, t})>`；`showPairing`、`createInvites` 在 Apps Script 編輯器執行，網址取自「設定」分頁 B1。
+- 首次開啟引導：存放位置 (社團 / 自己的 Google / 只存手機) → 勾選通用範本 (`src/data/templates.ts`)。已有資料的裝置自動略過；用連結開啟且雲端有自己資料者直接還原。

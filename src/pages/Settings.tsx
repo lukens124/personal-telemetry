@@ -3,7 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { refreshSyncState, runSync, useSyncState } from '../sync/auto';
 import { pairingLink, parsePairing } from '../sync/pair';
-import { exportJson, getConfig, setConfig } from '../sync/sync';
+import { exportJson, getCloudMember, getConfig, setConfig } from '../sync/sync';
+
+const HEALTH_GUIDE = 'https://github.com/lukens124/personal-telemetry/blob/main/docs/HEALTH_SHORTCUT.md';
 import { ConfirmButton, useNav } from '../ui/kit';
 
 function ago(ts: number | null): string {
@@ -38,8 +40,19 @@ export function Settings() {
     void navigator.storage?.estimate?.().then((e) => setUsage(e.usage != null ? `${(e.usage / 1024 / 1024).toFixed(2)} MB` : ''));
   }, []);
 
+  const cloud = useLiveQuery(async () => ({ member: await getCloudMember(db), cfg: await getConfig(db) }), [sync.lastSyncAt, sync.configured]);
+  const [showKey, setShowKey] = useState(false);
+  const copy = async (text: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      nav.toast(`已複製${what}`);
+    } catch {
+      nav.toast('無法複製，請長按手動複製');
+    }
+  };
+
   const counts = useLiveQuery(async () => ({
-    habits: await db.habits.count(),
+    habits: (await db.habits.toArray()).filter((h) => h.deleted === 0).length,
     containers: await db.containers.count(),
     logs: await db.logs.count(),
   }));
@@ -149,6 +162,21 @@ export function Settings() {
           <span style={{ color: sync.error ? 'var(--miss)' : undefined }}>{statusText}</span>
           {sync.configured && <span class="field-label" style={{ margin: 0 }}>待上傳 {sync.pending} 筆</span>}
         </div>
+        {sync.configured && cloud?.member && (
+          <div class="where">
+            {cloud.member.role === 'member' ? (
+              <>
+                <strong>存放位置：{cloud.member.space ? `「${cloud.member.space}」` : '社團雲端'}{cloud.member.name ? `（你是 ${cloud.member.name}）` : ''}</strong>
+                <span>社團管理者看得到你的全部紀錄，其他成員看不到。想移除資料請聯絡管理者。</span>
+              </>
+            ) : (
+              <>
+                <strong>存放位置：你自己的 Google 試算表{cloud.member.space ? `（社團「${cloud.member.space}」管理者）` : ''}</strong>
+                <span>{cloud.member.space ? '成員的資料也存在這份試算表，各自只能讀寫自己的。' : '只有你看得到。'}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {editing ? (
           <div style={{ display: 'grid', gap: '10px', marginTop: '12px' }}>
@@ -210,6 +238,29 @@ export function Settings() {
                 </div>
                 <p class="field-label" style={{ color: 'var(--miss)' }}>這個連結等同雲端鑰匙，只傳給自己的裝置。</p>
               </>
+            )}
+          </div>
+        </>
+      )}
+
+      {sync.configured && !editing && cloud?.cfg && (
+        <>
+          <div class="section-title"><span>⌚ Apple 健康捷徑</span></div>
+          <div class="card">
+            <p class="field-label" style={{ margin: 0 }}>
+              設定「每晚自動匯入運動」捷徑時需要的網址與 Token。
+              <a class="link-btn" style={{ minHeight: 0, padding: 0 }} href={HEALTH_GUIDE} target="_blank" rel="noopener">設定說明</a>
+            </p>
+            <div class="btn-row">
+              <button class="link-btn" onClick={() => setShowKey((v) => !v)}>{showKey ? '隱藏' : '顯示網址與 Token'}</button>
+            </div>
+            {showKey && (
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <div class="mono">{cloud.cfg.url}</div>
+                <button class="link-btn" style={{ justifySelf: 'start' }} onClick={() => void copy(cloud.cfg!.url, '網址')}>複製網址</button>
+                <div class="mono">{cloud.cfg.token}</div>
+                <button class="link-btn" style={{ justifySelf: 'start' }} onClick={() => void copy(cloud.cfg!.token, ' Token')}>複製 Token</button>
+              </div>
             )}
           </div>
         </>

@@ -31,6 +31,15 @@ export interface ServerResponse {
   server_time: number;
   changes: Rows;
   counts: Record<TableName, number>;
+  /** 雲端身分：owner = 自架或社團管理者；member = 社團成員 */
+  member?: CloudMember;
+}
+
+export interface CloudMember {
+  name: string;
+  role: 'owner' | 'member';
+  /** 社團名稱 (管理者在試算表「設定」填寫) */
+  space: string;
 }
 
 export type SyncOutcome =
@@ -75,6 +84,11 @@ export async function getConfig(db: TelemetryDB): Promise<SyncConfig | null> {
 export async function setConfig(db: TelemetryDB, cfg: SyncConfig | null) {
   await setMeta(db, 'sync_config', cfg);
   await setMeta(db, 'last_server_ts', 0);
+  await setMeta(db, 'cloud_member', null);
+}
+
+export async function getCloudMember(db: TelemetryDB): Promise<CloudMember | null> {
+  return (await getMeta<CloudMember | null>(db, 'cloud_member')) ?? null;
 }
 
 export async function pendingCount(db: TelemetryDB): Promise<number> {
@@ -90,11 +104,12 @@ const strip = (r: Row): Record<string, unknown> => {
   return rest;
 };
 
-async function post(transport: Transport, cfg: SyncConfig, since: number, changes: Rows): Promise<ServerResponse> {
+async function post(db: TelemetryDB, transport: Transport, cfg: SyncConfig, since: number, changes: Rows): Promise<ServerResponse> {
   const res = await transport(cfg.url, JSON.stringify({ token: cfg.token, since, changes }));
   if (!res.ok) {
-    throw new Error(res.error === 'UNAUTHORIZED' ? 'Token 不正確' : (res.error ?? '同步失敗'));
+    throw new Error(res.error === 'UNAUTHORIZED' ? 'Token 不正確，或此邀請已被停用' : (res.error ?? '同步失敗'));
   }
+  if (res.member) await setMeta(db, 'cloud_member', res.member);
   return res;
 }
 
@@ -109,7 +124,7 @@ export async function syncNow(db: TelemetryDB, transport: Transport = fetchTrans
 
     // 新裝置：本地沒有紀錄 → 先看雲端有沒有資料可以還原
     if (since === 0) {
-      const probe = await post(transport, cfg, 0, emptyRows());
+      const probe = await post(db, transport, cfg, 0, emptyRows());
       const cloudHasData = (probe.counts?.habits ?? 0) > 0;
       const localLogs = await db.logs.count();
 
@@ -153,7 +168,7 @@ export async function syncNow(db: TelemetryDB, transport: Transport = fetchTrans
       for (const r of rows) sent.set(`${t}:${(r as unknown as Record<string, string>)[KEYS[t]]}`, r.updated_at);
     }
 
-    const res = await post(transport, cfg, since, outgoing);
+    const res = await post(db, transport, cfg, since, outgoing);
 
     let pulled = 0;
     await db.transaction('rw', db.habits, db.containers, db.logs, async () => {

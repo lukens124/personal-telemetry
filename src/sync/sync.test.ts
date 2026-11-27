@@ -8,7 +8,8 @@ import { createDB, type TelemetryDB } from '../data/db';
 import { listContainers, listHabits, quickCheckin, saveEntry, updateHabit } from '../data/repo';
 import { seedIfEmpty } from '../data/seed';
 import type { Habit } from '../data/types';
-import { exportJson, pendingCount, setConfig, syncNow, type ServerResponse, type Transport } from './sync';
+import { parsePairing } from './pair';
+import { exportJson, getCloudMember, pendingCount, setConfig, syncNow, type ServerResponse, type Transport } from './sync';
 
 // ---------------------------------------------------------------- 模擬 Google 服務
 
@@ -48,6 +49,12 @@ class FakeSheet {
         for (let i = 0; i < self.data.length; i++) self.data[i] ??= [];
       },
       setNumberFormat: () => undefined,
+      getValue: () => self.data[r - 1]?.[c - 1] ?? '',
+      setValue: (v: unknown) => {
+        const rr = (self.data[r - 1] ??= []);
+        rr[c - 1] = v;
+        for (let i = 0; i < self.data.length; i++) self.data[i] ??= [];
+      },
     };
   }
 }
@@ -77,13 +84,19 @@ function loadGas() {
       MimeType: { JSON: 'json' },
       createTextOutput: (s: string) => ({ setMimeType: () => ({ content: s }) }),
     },
-    Utilities: { getUuid: () => '1234-abcd-5678-ef90' },
+    Utilities: {
+      getUuid: () => crypto.randomUUID(),
+      base64EncodeWebSafe: (str: string) => Buffer.from(str, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
+    },
+    ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }) },
     Logger: { log: () => undefined },
   };
   const src = readFileSync(resolve(__dirname, '../../gas/Code.gs'), 'utf8');
-  const factory = new Function(...Object.keys(globals), `${src}\nreturn { setup, doPost };`);
+  const factory = new Function(...Object.keys(globals), `${src}\nreturn { setup, doPost, createInvites, showPairing };`);
   const gas = factory(...Object.values(globals)) as {
     setup: () => string;
+    createInvites: () => number;
+    showPairing: () => string;
     doPost: (e: { postData: { contents: string } }) => { content: string };
   };
   const token = gas.setup();
@@ -97,7 +110,14 @@ function loadGas() {
       Date.now = realNow;
     }
   };
-  return { token, transport, sheets };
+  /** 管理者在「成員」分頁填名字後執行 createInvites，回傳 名字 → 邀請連結 */
+  const invite = (...names: string[]) => {
+    const m = sheets.get('成員')!;
+    for (const n of names) m.data.push([n]);
+    gas.createInvites();
+    return Object.fromEntries(m.data.slice(1).map((r) => [String(r[0]), { link: String(r[4]), token: String(r[2]), row: r }]));
+  };
+  return { token, transport, sheets, invite, showPairing: gas.showPairing };
 }
 
 // ---------------------------------------------------------------- 測試
@@ -127,7 +147,7 @@ describe('同步', () => {
   it('Token 錯誤會回報錯誤', async () => {
     await setConfig(phone, { url: 'x', token: 'wrong' });
     const r = await syncNow(phone, server.transport);
-    expect(r).toEqual({ status: 'ERROR', error: 'Token 不正確' });
+    expect(r).toEqual({ status: 'ERROR', error: 'Token 不正確，或此邀請已被停用' });
   });
 
   it('首次同步把全部資料推上雲端，並清除 dirty', async () => {
@@ -318,6 +338,73 @@ describe('同步', () => {
       // 再同步一次：沒有新的合併、沒有殘留待上傳
       const again = await syncNow(ph, fresh.transport);
       expect(again).toMatchObject({ status: 'OK', pushed: 0 });
+    });
+  });
+
+  describe('社團雲端 (多位成員)', () => {
+    it('成員用邀請連結加入，各自只拿得到自己的資料；管理者資料不受影響', async () => {
+      // 管理者 (Luke) 已有資料
+      const gym = await habitBy(phone, '重訓');
+      await quickCheckin(phone, gym, TUE);
+      await syncNow(phone, server.transport);
+      expect(await getCloudMember(phone)).toMatchObject({ role: 'owner' });
+
+      server.sheets.get('設定')!.data[2][1] = '讀書攻略社';
+      const inv = server.invite('Amy', 'Ben');
+      expect(inv.Amy.link).toMatch(/^https:\/\/lukens124\.github\.io\/personal-telemetry\/#pair=/);
+      const amyCfg = parsePairing(inv.Amy.link)!;
+      expect(amyCfg).toEqual({ url: 'https://script.google.com/macros/s/TEST/exec', token: inv.Amy.token });
+
+      // Amy：新手機，選好項目後連線 → 雲端沒有她的資料，不會拿到 Luke 的
+      const amy = newDb();
+      await setConfig(amy, amyCfg);
+      await seedIfEmpty(amy, WED);
+      const amyRead = await habitBy(amy, '閱讀與筆記');
+      const book = (await listContainers(amy, amyRead.habit_id))[0];
+      await saveEntry(amy, amyRead, { container_id: book.container_id, payload: { nature: 'INSIGHT', text: 'Amy 的筆記' } }, WED);
+      expect((await syncNow(amy, server.transport)).status).toBe('OK');
+      expect(await getCloudMember(amy)).toEqual({ name: 'Amy', role: 'member', space: '讀書攻略社' });
+      expect((await amy.logs.toArray()).some((l) => l.habit_id === gym.habit_id)).toBe(false);
+
+      // Luke 同步：看不到 Amy 的筆記，自己的不變
+      await syncNow(phone, server.transport);
+      expect((await phone.logs.toArray()).some((l) => l.summary_text === 'Amy 的筆記')).toBe(false);
+      expect((await listHabits(phone)).length).toBe(6);
+
+      // 試算表：Amy 的列標記她的成員 ID；Luke 的舊列 owner_id 空白
+      const logsSheet = server.sheets.get('Habit_Logs')!.data;
+      const ownerCol = (logsSheet[0] as string[]).indexOf('owner_id');
+      const amyId = String(inv.Amy.row[1]);
+      expect(logsSheet.slice(1).filter((r) => r[ownerCol] === amyId).length).toBeGreaterThan(0);
+      expect(logsSheet.slice(1).filter((r) => r[ownerCol] === '').length).toBeGreaterThan(0);
+
+      // Amy 換新手機：用同一條連結 → 只還原她自己的資料
+      const amy2 = newDb();
+      await setConfig(amy2, amyCfg);
+      const r = await syncNow(amy2, server.transport);
+      expect(r.status === 'OK' && r.restored).toBe(true);
+      expect((await amy2.logs.toArray()).map((l) => l.summary_text)).toContain('Amy 的筆記');
+      expect((await listHabits(amy2)).length).toBe(6);
+
+      // Amy 的手錶運動只進她自己的有氧
+      await server.transport('x', JSON.stringify({ token: inv.Amy.token, action: 'health_workout', type: 'Running', start: '2026-11-26T06:30:00+08:00', end: '2026-11-26T07:00:00+08:00', distance_km: 5 }));
+      await syncNow(amy, server.transport);
+      await syncNow(phone, server.transport);
+      expect((await amy.logs.toArray()).some((l) => l.sub_mode === 'RUN')).toBe(true);
+      expect((await phone.logs.toArray()).some((l) => l.sub_mode === 'RUN')).toBe(false);
+    });
+
+    it('停用的邀請無法再同步', async () => {
+      const inv = server.invite('Ben');
+      const ben = newDb();
+      await setConfig(ben, parsePairing(inv.Ben.link)!);
+      expect((await syncNow(ben, server.transport)).status).toBe('OK');
+      inv.Ben.row[3] = 'REVOKED';
+      expect(await syncNow(ben, server.transport)).toEqual({ status: 'ERROR', error: 'Token 不正確，或此邀請已被停用' });
+    });
+
+    it('自架：showPairing 產生管理者自己的配對連結', () => {
+      expect(parsePairing(server.showPairing())).toEqual({ url: 'https://script.google.com/macros/s/TEST/exec', token: server.token });
     });
   });
 });
