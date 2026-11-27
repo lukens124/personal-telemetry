@@ -14,7 +14,7 @@ import {
 } from '../data/repo';
 import type { WorkoutExercise, WorkoutMode, WorkoutPayload } from '../data/types';
 import { countSets, editSet, isDone, nextTemplate, toSession } from '../logic/workout';
-import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
+import { ConfirmButton, Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 const clone = <T,>(x: T): T => structuredClone(x);
 const toPayload = (p: WorkoutPayload) => p as unknown as Record<string, unknown>;
@@ -92,7 +92,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
   };
 
   const remove = async () => {
-    if (!editing || !confirm('刪除這筆重訓紀錄？')) return;
+    if (!editing) return;
     await deleteEntry(db, editing.log_id, new Date());
     nav.toast('已刪除');
     nav.back();
@@ -214,7 +214,7 @@ export function WorkoutBench({ habitId, entryId }: { habitId: string; entryId?: 
           ))}
           <div class="btn-row">
             <button class="link-btn" onClick={() => setExercises((xs) => [...xs, { name: '', sets: [{ kg: 0, reps: 5, done: false }] }])}>＋ 新增動作</button>
-            {editing && <button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button>}
+            {editing && <ConfirmButton onConfirm={remove} confirmText="再按一次確認刪除">刪除這筆紀錄</ConfirmButton>}
           </div>
         </>
       )}

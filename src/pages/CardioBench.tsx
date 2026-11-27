@@ -8,7 +8,7 @@ import { db } from '../data/db';
 import { createContainer, deleteEntry, listContainers, listEntries, saveEntry, updateEntry } from '../data/repo';
 import { type CardioConfig, type CardioPayload, type CardioSport } from '../data/types';
 import { fmtPace, paceSec } from '../logic/cardio';
-import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
+import { ConfirmButton, InlineAdd, Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 type Num = Exclude<keyof CardioPayload, 'source' | 'note' | 'hk_type'>;
 
@@ -27,6 +27,7 @@ export function CardioBench({ habitId, entryId }: { habitId: string; entryId?: s
   const [routeId, setRouteId] = useState<string | null>(null);
   const [p, setP] = useState<CardioPayload>({ duration_min: 0, source: 'MANUAL' });
   const [at, setAt] = useState<Date | null>(null);
+  const [addingRoute, setAddingRoute] = useState(false);
   const inited = useRef(false);
 
   const prefill = (s: CardioSport) => {
@@ -68,10 +69,11 @@ export function CardioBench({ habitId, entryId }: { habitId: string; entryId?: s
     setSport(s);
     if (!editing) prefill(s);
   };
-  const switchRoute = async (id: string) => {
-    if (id !== '__new') return setRouteId(id || null);
-    const name = prompt(`新增${cfg.container_label}`)?.trim();
-    if (!name) return;
+  const switchRoute = (id: string) => {
+    if (id === '__new') return setAddingRoute(true);
+    setRouteId(id || null);
+  };
+  const addRoute = async (name: string) => {
     const c = await createContainer(db, { habit_id: habit.habit_id, name }, new Date());
     setRouteId(c.container_id);
   };
@@ -100,7 +102,7 @@ export function CardioBench({ habitId, entryId }: { habitId: string; entryId?: s
   };
 
   const remove = async () => {
-    if (!editing || !confirm('刪除這筆有氧紀錄？' + (fromHealth ? '\n之後健康 App 同步也不會再匯入這筆。' : ''))) return;
+    if (!editing) return;
     await deleteEntry(db, editing.log_id, new Date());
     nav.toast('已刪除');
     nav.back();
@@ -141,12 +143,13 @@ export function CardioBench({ habitId, entryId }: { habitId: string; entryId?: s
         {sport !== 'INDOOR' && (
           <div style={{ marginTop: '12px' }}>
             <label class="field-label" for="route">{cfg.container_label}（選填）</label>
-            <select id="route" class="select" value={routeId ?? ''} onChange={(e) => void switchRoute((e.currentTarget as HTMLSelectElement).value)}>
+            <select id="route" class="select" value={routeId ?? ''} onChange={(e) => switchRoute((e.currentTarget as HTMLSelectElement).value)}>
               <option value="">（不指定）</option>
               {active.map((c) => <option value={c.container_id}>{c.name}</option>)}
               {routeId && !active.some((c) => c.container_id === routeId) && <option value={routeId}>{nameOf(routeId)}</option>}
               <option value="__new">＋ 新增…</option>
             </select>
+            <InlineAdd open={addingRoute} onClose={() => setAddingRoute(false)} placeholder={`新增${cfg.container_label}`} onSubmit={addRoute} />
           </div>
         )}
 
@@ -198,7 +201,11 @@ export function CardioBench({ habitId, entryId }: { habitId: string; entryId?: s
           onInput={(e) => setP((x) => ({ ...x, note: (e.currentTarget as HTMLTextAreaElement).value }))} />
       </div>
 
-      {editing && <div class="btn-row"><button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button></div>}
+      {editing && (
+        <div class="btn-row">
+          <ConfirmButton onConfirm={remove} confirmText={fromHealth ? '再按一次刪除（之後不會再匯入）' : '再按一次確認刪除'}>刪除這筆紀錄</ConfirmButton>
+        </div>
+      )}
 
       <div class="section-title"><span>歷史</span><span>{entries.length} 筆</span></div>
       {entries.length === 0 ? (

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { refreshSyncState, runSync, useSyncState } from '../sync/auto';
 import { exportJson, getConfig, setConfig } from '../sync/sync';
-import { useNav } from '../ui/kit';
+import { ConfirmButton, useNav } from '../ui/kit';
 
 function ago(ts: number | null): string {
   if (!ts) return '尚未同步';
@@ -55,7 +55,6 @@ export function Settings() {
   };
 
   const disconnect = async () => {
-    if (!confirm('停用同步？本機資料不會刪除。')) return;
     await setConfig(db, null);
     await refreshSyncState();
     setUrl('');
@@ -132,7 +131,7 @@ export function Settings() {
           <div class="btn-row" style={{ marginTop: '10px' }}>
             <button class="link-btn" onClick={syncNowClick} disabled={sync.syncing}>立即同步</button>
             <button class="link-btn" onClick={() => setEditing(true)}>修改設定</button>
-            <button class="link-btn danger" onClick={disconnect}>停用同步</button>
+            <ConfirmButton onConfirm={disconnect} confirmText="再按一次停用（本機資料保留）">停用同步</ConfirmButton>
           </div>
         )}
       </div>

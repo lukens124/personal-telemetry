@@ -4,7 +4,7 @@ import { db } from '../data/db';
 import { createContainer, deleteEntry, listContainers, listEntries, saveEntry, updateEntry, updateHabit } from '../data/repo';
 import type { CoffeeConfig, CoffeeMode, CoffeePayload } from '../data/types';
 import { coffeeDefaults, FLAVOR_PRESETS } from '../logic/coffee';
-import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
+import { ConfirmButton, InlineAdd, Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 const MODE_LABEL: Record<CoffeeMode, string> = { POUR_OVER: '手沖', ESPRESSO: '義式' };
 
@@ -29,6 +29,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
   const [more, setMore] = useState(false);
   const [at, setAt] = useState<Date | null>(null);
   const [filter, setFilter] = useState<'ALL' | CoffeeMode>('ALL');
+  const [adding, setAdding] = useState<'bean' | 'grinder' | null>(null);
   const inited = useRef(false);
 
   const applyDefaults = (m: CoffeeMode, bean: string | null) => {
@@ -73,20 +74,20 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
     applyDefaults(m, beanId);
   };
   const switchBean = (id: string) => {
-    if (id === '__new') return void addBean();
+    if (id === '__new') return setAdding('bean');
     setBeanId(id);
     if (!editing) applyDefaults(mode, id);
   };
-  const addBean = async () => {
-    const name = prompt('新增咖啡豆 (例如：肯亞 AA 水洗)')?.trim();
-    if (!name) return;
+  const addBean = async (name: string) => {
     const c = await createContainer(db, { habit_id: habit.habit_id, name }, new Date());
     setBeanId(c.container_id);
   };
   const switchGrinder = async (g: string) => {
-    if (g !== '__new') return set({ grinder: g });
-    const name = prompt('新增磨豆機型號')?.trim();
-    if (!name) return;
+    if (g === '__new') return setAdding('grinder');
+    set({ grinder: g });
+  };
+  const addGrinder = async (name: string) => {
+    if (cfg.grinders.includes(name)) return set({ grinder: name });
     await updateHabit(db, habit.habit_id, { config: { ...cfg, grinders: [...cfg.grinders, name] } }, new Date());
     set({ grinder: name });
   };
@@ -95,9 +96,8 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
     (f) => !FLAVOR_PRESETS.includes(f),
   );
   const toggleFlavor = (f: string) => setFlavors((xs) => (xs.includes(f) ? xs.filter((x) => x !== f) : [...xs, f]));
-  const addFlavor = () => {
-    const f = prompt('新增風味')?.trim();
-    if (f && !flavors.includes(f)) setFlavors((xs) => [...xs, f]);
+  const addFlavor = (f: string) => {
+    if (!flavors.includes(f)) setFlavors((xs) => [...xs, f]);
   };
 
   const buildPayload = (): Record<string, unknown> => {
@@ -129,7 +129,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
   };
 
   const remove = async () => {
-    if (!editing || !confirm('刪除這筆咖啡紀錄？')) return;
+    if (!editing) return;
     await deleteEntry(db, editing.log_id, new Date());
     nav.toast('已刪除');
     nav.back();
@@ -169,6 +169,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
             {beanId && !active.some((c) => c.container_id === beanId) && <option value={beanId}>{nameOf(beanId)}（已封存）</option>}
             <option value="__new">＋ 新增咖啡豆…</option>
           </select>
+          <InlineAdd open={adding === 'bean'} onClose={() => setAdding(null)} placeholder="例如：肯亞 AA 水洗" onSubmit={addBean} />
         </div>
 
         <div style={{ marginTop: '12px' }}>
@@ -180,6 +181,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
             {grinders.map((g) => <option value={g}>{g}</option>)}
             <option value="__new">＋ 新增磨豆機…</option>
           </select>
+          <InlineAdd open={adding === 'grinder'} onClose={() => setAdding(null)} placeholder="磨豆機型號" onSubmit={addGrinder} />
         </div>
 
         <div class="param-grid">
@@ -223,7 +225,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
               {[...FLAVOR_PRESETS, ...customFlavors, ...flavors.filter((f) => !FLAVOR_PRESETS.includes(f) && !customFlavors.includes(f))].map((f) => (
                 <button type="button" class="chip" aria-pressed={flavors.includes(f)} onClick={() => toggleFlavor(f)}>{f}</button>
               ))}
-              <button type="button" class="chip" onClick={addFlavor}>＋</button>
+              <InlineAdd chip label="＋ 風味" placeholder="新增風味" onSubmit={addFlavor} />
             </div>
             <textarea class="text-input" style={{ minHeight: '72px' }} placeholder="備註" value={note}
               onInput={(e) => setNote((e.currentTarget as HTMLTextAreaElement).value)} />
@@ -231,7 +233,7 @@ export function CoffeeBench({ habitId, entryId }: { habitId: string; entryId?: s
         )}
       </div>
 
-      {editing && <div class="btn-row"><button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button></div>}
+      {editing && <div class="btn-row"><ConfirmButton onConfirm={remove} confirmText="再按一次確認刪除">刪除這筆紀錄</ConfirmButton></div>}
 
       <div class="section-title">
         <span>歷史</span>

@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { bindWeekday, createContainer, deleteHabit, listContainers, updateContainer, updateHabit } from '../data/repo';
 import type { CoffeeConfig, CoffeeMode, Container, Habit, IsoWeekday, WorkoutConfig } from '../data/types';
-import { Stepper, useNav, WeekdayChips } from '../ui/kit';
+import { ConfirmButton, InlineAdd, Stepper, useNav, WeekdayChips } from '../ui/kit';
 
 const LABELS: Record<Habit['engine_type'], string> = {
   WORKOUT: '課表',
@@ -21,6 +21,7 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
     return { habit, containers };
   }, [habitId]);
   const [showArchived, setShowArchived] = useState(false);
+  const [addingC, setAddingC] = useState(false);
   const nav = useNav();
 
   const habit = data?.habit;
@@ -46,23 +47,19 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
     void updateHabit(db, habit.habit_id, { schedule_days: days, weekly_target: target }, now());
   };
 
-  const addContainer = async () => {
-    if (!habit) return;
-    const name = prompt(`新增${containerLabel}名稱`)?.trim();
-    if (name) await createContainer(db, { habit_id: habit.habit_id, name }, now());
+  const addContainer = async (name: string) => {
+    if (habit) await createContainer(db, { habit_id: habit.habit_id, name }, now());
   };
 
   const cycle = habit?.engine_type === 'WORKOUT' ? (habit.config as WorkoutConfig).cycle : null;
   const coffee = habit?.engine_type === 'COFFEE' ? (habit.config as CoffeeConfig) : null;
 
   const setCoffee = (c: CoffeeConfig) => habit && void updateHabit(db, habit.habit_id, { config: c }, now());
-  const addGrinder = () => {
-    if (!coffee) return;
-    const g = prompt('新增磨豆機型號')?.trim();
-    if (g && !coffee.grinders.includes(g)) setCoffee({ ...coffee, grinders: [...coffee.grinders, g] });
+  const addGrinder = (g: string) => {
+    if (coffee && !coffee.grinders.includes(g)) setCoffee({ ...coffee, grinders: [...coffee.grinders, g] });
   };
   const removeGrinder = (g: string) => {
-    if (!coffee || !confirm(`移除「${g}」？歷史紀錄不受影響。`)) return;
+    if (!coffee) return;
     const dg = { ...coffee.default_grinder };
     for (const k of Object.keys(dg) as CoffeeMode[]) if (dg[k] === g) delete dg[k];
     setCoffee({ grinders: coffee.grinders.filter((x) => x !== g), default_grinder: dg });
@@ -70,7 +67,6 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
 
   const remove = async () => {
     if (!habit) return;
-    if (!confirm(`刪除「${habit.name}」？\n項目會從 App 隱藏，歷史紀錄仍保留在雲端試算表。`)) return;
     await deleteHabit(db, habit.habit_id, now());
     onClose();
     nav.go({ name: habit.category_tab === 'TRACK' ? 'track' : 'log' });
@@ -128,11 +124,11 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
                   <div class="container-item">
                     <div class="line">
                       <span style={{ flex: 1 }}>⚙️ {g}</span>
-                      <button class="link-btn danger" onClick={() => removeGrinder(g)}>移除</button>
+                      <ConfirmButton onConfirm={() => removeGrinder(g)} confirmText="再按一次移除">移除</ConfirmButton>
                     </div>
                   </div>
                 ))}
-                <div class="btn-row"><button class="link-btn" onClick={addGrinder}>＋ 新增磨豆機</button></div>
+                <div class="btn-row"><InlineAdd label="＋ 新增磨豆機" placeholder="磨豆機型號" onSubmit={addGrinder} /></div>
                 <div class="param-grid">
                   {(['POUR_OVER', 'ESPRESSO'] as CoffeeMode[]).map((m) => (
                     <>
@@ -150,9 +146,10 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
 
             <div class="section-title">
               <span>{containerLabel}{habit.engine_type === 'WORKOUT' ? '與星期綁定' : ''}</span>
-              <button class="link-btn" onClick={addContainer}>＋ 新增</button>
+              {!addingC && <button class="link-btn" onClick={() => setAddingC(true)}>＋ 新增</button>}
             </div>
             <div class="card">
+              <InlineAdd open={addingC} onClose={() => setAddingC(false)} placeholder={`新增${containerLabel}名稱`} onSubmit={addContainer} />
               {active.length === 0 && <div class="field-label">還沒有{containerLabel}。</div>}
               {active.map((c) => <ContainerItem key={c.container_id} c={c} habit={habit} />)}
             </div>
@@ -172,7 +169,7 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
               </>
             )}
             <div class="btn-row" style={{ marginTop: '24px', justifyContent: 'center' }}>
-              <button class="link-btn danger" onClick={remove}>刪除「{habit.name}」</button>
+              <ConfirmButton onConfirm={remove} confirmText={`再按一次刪除「${habit.name}」（紀錄保留在雲端）`}>刪除「{habit.name}」</ConfirmButton>
             </div>
           </>
         )}

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { db } from '../data/db';
 import { createContainer, deleteEntry, listContainers, listEntries, saveEntry, updateEntry } from '../data/repo';
 import type { Container, GenericConfig, GenericPayload, HabitLog, NoteNature, ReadingConfig, ReadingPayload } from '../data/types';
-import { Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
+import { ConfirmButton, InlineAdd, Seg, shortDate, Stepper, TimePicker, useNav } from '../ui/kit';
 
 export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: string }) {
   const nav = useNav();
@@ -26,6 +26,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const [example, setExample] = useState('');
   const [page, setPage] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [addingC, setAddingC] = useState(false);
   const [showMore, setShowMore] = useState(false);
   // 共用文字
   const [text, setText] = useState('');
@@ -76,9 +77,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const containerLabel = isReading ? '書籍 / 來源' : gcfg.container_label;
   const showContainer = isReading || !!gcfg.container_label || active.length > 0;
 
-  const addContainer = async () => {
-    const name = prompt(`新增${containerLabel ?? '分類'}名稱`)?.trim();
-    if (!name) return;
+  const addContainer = async (name: string) => {
     const c = await createContainer(db, { habit_id: habit.habit_id, name }, new Date());
     setContainerId(c.container_id);
   };
@@ -111,7 +110,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   };
 
   const remove = async () => {
-    if (!editing || !confirm('刪除這筆紀錄？')) return;
+    if (!editing) return;
     await deleteEntry(db, editing.log_id, new Date());
     nav.toast('已刪除');
     nav.back();
@@ -120,8 +119,8 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
   const over = isReading && text.length > rcfg.max_chars;
   const knownTags = [...new Set(entries.flatMap((e) => (e.payload as unknown as ReadingPayload | null)?.tags ?? []))];
   const tagChoices = [...knownTags, ...tags.filter((t) => !knownTags.includes(t))];
-  const addTag = () => {
-    const t = prompt('新增主題標籤')?.trim().replace(/^#/, '');
+  const addTag = (raw: string) => {
+    const t = raw.replace(/^#/, '').trim();
     if (t && !tags.includes(t)) setTags((xs) => [...xs, t]);
   };
 
@@ -153,8 +152,9 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
                 {isReading && !containerId && <option value="" disabled>選擇…</option>}
                 {active.map((c) => <option value={c.container_id}>{c.name}</option>)}
               </select>
-              <button class="link-btn" onClick={addContainer}>＋新增</button>
+              {!addingC && <button class="link-btn" onClick={() => setAddingC(true)}>＋新增</button>}
             </div>
+            <InlineAdd open={addingC} onClose={() => setAddingC(false)} placeholder={`新增${containerLabel ?? '分類'}名稱`} onSubmit={addContainer} />
           </div>
         )}
 
@@ -189,7 +189,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
                       #{t}
                     </button>
                   ))}
-                  <button type="button" class="chip" onClick={addTag}>＋ 標籤</button>
+                  <InlineAdd chip label="＋ 標籤" placeholder="新增主題標籤" onSubmit={addTag} />
                 </div>
               </div>
             )}
@@ -224,7 +224,7 @@ export function SimpleBench({ habitId, entryId }: { habitId: string; entryId?: s
       </div>
 
       {editing && (
-        <div class="btn-row"><button class="link-btn danger" onClick={remove}>刪除這筆紀錄</button></div>
+        <div class="btn-row"><ConfirmButton onConfirm={remove} confirmText="再按一次確認刪除">刪除這筆紀錄</ConfirmButton></div>
       )}
 
       {isReading ? (

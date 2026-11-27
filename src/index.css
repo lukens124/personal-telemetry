@@ -840,3 +840,26 @@ textarea.text-input:focus {
   font-size: 12px;
   color: var(--dim);
 }
+
+/* 內嵌輸入 / 二次確認 */
+.inline-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
+}
+.inline-add .text-input {
+  flex: 1;
+  min-width: 0;
+}
+.link-btn.muted {
+  color: var(--dim);
+}
+.link-btn.danger.armed {
+  color: var(--on-accent);
+  background: var(--danger);
+  border-radius: 999px;
+  padding: 0 14px;
+  font-weight: 600;
+}

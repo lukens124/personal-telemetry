@@ -1,4 +1,4 @@
-import { createContext } from 'preact';
+import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { WEEKDAY_LABELS } from '../data/dates';
 import type { IsoWeekday } from '../data/types';
@@ -275,4 +275,96 @@ export function TimePicker(props: { value: Date | null; onChange: (d: Date | nul
 export function shortDate(ld: string) {
   const [, m, d] = ld.split('-');
   return `${Number(m)}/${Number(d)}`;
+}
+
+// ---------------------------------------------------------------- 取代系統對話框
+
+/** 危險操作：按一次變成「再按一次確認」，3 秒內再按才執行 */
+export function ConfirmButton(props: {
+  children: ComponentChildren;
+  confirmText?: string;
+  onConfirm: () => void | Promise<void>;
+  class?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      class={`${props.class ?? 'link-btn danger'}${armed ? ' armed' : ''}`}
+      aria-live="polite"
+      onClick={() => {
+        clearTimeout(timer.current);
+        if (armed) {
+          setArmed(false);
+          void props.onConfirm();
+          return;
+        }
+        setArmed(true);
+        haptic();
+        timer.current = setTimeout(() => setArmed(false), 3000);
+      }}
+    >
+      {armed ? (props.confirmText ?? '再按一次確認') : props.children}
+    </button>
+  );
+}
+
+/**
+ * 內嵌輸入框：取代 prompt()。
+ * 不給 open 時自帶「＋ 新增」按鈕；給 open 時由外部控制 (例如下拉選單選到「＋ 新增…」)。
+ */
+export function InlineAdd(props: {
+  placeholder: string;
+  onSubmit: (value: string) => void | Promise<void>;
+  label?: string;
+  chip?: boolean;
+  open?: boolean;
+  onClose?: () => void;
+}) {
+  const [selfOpen, setSelfOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const controlled = props.open !== undefined;
+  const open = controlled ? props.open : selfOpen;
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+  const close = () => {
+    setValue('');
+    if (controlled) props.onClose?.();
+    else setSelfOpen(false);
+  };
+  const submit = async () => {
+    const v = value.trim();
+    if (!v) return close();
+    await props.onSubmit(v);
+    close();
+  };
+  if (!open) {
+    if (controlled) return null;
+    return (
+      <button type="button" class={props.chip ? 'chip' : 'link-btn'} onClick={() => setSelfOpen(true)}>
+        {props.label ?? '＋ 新增'}
+      </button>
+    );
+  }
+  return (
+    <span class="inline-add">
+      <input
+        class="text-input"
+        placeholder={props.placeholder}
+        value={value}
+        ref={inputRef}
+        onInput={(e) => setValue((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit();
+          if (e.key === 'Escape') close();
+        }}
+      />
+      <button type="button" class="link-btn" onClick={() => void submit()}>加入</button>
+      <button type="button" class="link-btn muted" onClick={close}>取消</button>
+    </span>
+  );
 }
