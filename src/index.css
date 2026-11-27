@@ -159,7 +159,7 @@ button {
 .grid-head,
 .grid-row {
   display: grid;
-  grid-template-columns: 4.6em repeat(7, 1fr);
+  grid-template-columns: 4.6rem repeat(7, minmax(0, 1fr));
   align-items: stretch;
 }
 .grid-head {
