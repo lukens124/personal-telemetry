@@ -10,6 +10,7 @@ const LABELS: Record<Habit['engine_type'], string> = {
   COFFEE: '咖啡豆',
   READING: '書籍 / 來源',
   GENERIC: '分類',
+  CARDIO: '路線 / 主題',
 };
 
 /** Modal 2.5：排程、星期綁定、容器、N:M 週期 */
@@ -26,8 +27,8 @@ export function ManageSheet({ habitId, onClose }: { habitId: string; onClose: ()
   const now = () => new Date();
 
   const containerLabel =
-    habit?.engine_type === 'GENERIC'
-      ? ((habit.config as { container_label?: string }).container_label ?? LABELS.GENERIC)
+    habit?.engine_type === 'GENERIC' || habit?.engine_type === 'CARDIO'
+      ? ((habit.config as { container_label?: string }).container_label ?? LABELS[habit.engine_type])
       : habit
         ? LABELS[habit.engine_type]
         : '';

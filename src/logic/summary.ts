@@ -1,4 +1,7 @@
+import { cardioSummary } from './cardio';
 import type {
+  CardioPayload,
+  CardioSport,
   CoffeePayload,
   Container,
   GenericConfig,
@@ -17,7 +20,12 @@ function fmtDuration(min: number): string {
 }
 
 /** 依引擎產生列表用的單行摘要 (存入 summary_text) */
-export function summarize(habit: Habit, container: Container | null, payload: Record<string, unknown> | null): string {
+export function summarize(
+  habit: Habit,
+  container: Container | null,
+  payload: Record<string, unknown> | null,
+  subMode?: string | null,
+): string {
   if (!payload) return '';
   switch (habit.engine_type) {
     case 'WORKOUT': {
@@ -47,6 +55,8 @@ export function summarize(habit: Habit, container: Container | null, payload: Re
       const p = payload as unknown as ReadingPayload;
       return p.text.length > 24 ? p.text.slice(0, 24) + '…' : p.text;
     }
+    case 'CARDIO':
+      return cardioSummary((subMode as CardioSport) ?? 'ROAD', container?.name, payload as unknown as CardioPayload);
     case 'GENERIC': {
       const p = payload as unknown as GenericPayload;
       const cfg = habit.config as GenericConfig;

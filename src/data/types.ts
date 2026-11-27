@@ -9,7 +9,7 @@
  */
 
 export type CategoryTab = 'TRACK' | 'LOG';
-export type EngineType = 'WORKOUT' | 'COFFEE' | 'READING' | 'GENERIC';
+export type EngineType = 'WORKOUT' | 'COFFEE' | 'READING' | 'GENERIC' | 'CARDIO';
 /** ISO weekday: 1 = 週一 … 7 = 週日 */
 export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 /** YYYY-MM-DD (使用者本地日期) */
@@ -62,7 +62,12 @@ export interface GenericConfig {
   container_label?: string;
 }
 
-export type HabitConfig = WorkoutConfig | CoffeeConfig | ReadingConfig | GenericConfig;
+/** 有氧：路線以容器管理，其餘欄位固定 */
+export interface CardioConfig {
+  container_label: string;
+}
+
+export type HabitConfig = WorkoutConfig | CoffeeConfig | ReadingConfig | GenericConfig | CardioConfig;
 
 // ---------- 主表 ----------
 
@@ -100,7 +105,10 @@ export interface Container extends SyncFields {
   last_payload: Record<string, unknown> | null;
 }
 
-export type LogKind = 'CHECKIN' | 'ENTRY';
+/**
+ * HEALTH：Apple 健康匯入、但不是獨立紀錄的生理數據 (目前用於肌力訓練，掛在重訓當天)
+ */
+export type LogKind = 'CHECKIN' | 'ENTRY' | 'HEALTH';
 
 export interface HabitLog extends SyncFields {
   log_id: string;
@@ -165,4 +173,41 @@ export interface ReadingPayload {
 export interface GenericPayload {
   values: Record<string, number>;
   text?: string;
+}
+
+// ---------- 有氧 ----------
+
+/** sub_mode：公路車 / 室內台 / 跑步 / 其他 (健康 App 匯入的步行、登山等) */
+export type CardioSport = 'ROAD' | 'INDOOR' | 'RUN' | 'OTHER';
+export const CARDIO_SPORT_LABEL: Record<CardioSport, string> = {
+  ROAD: '公路車',
+  INDOOR: '室內台',
+  RUN: '跑步',
+  OTHER: '其他',
+};
+
+export interface CardioPayload {
+  duration_min: number;
+  distance_km?: number;
+  kcal?: number;
+  avg_hr?: number;
+  max_hr?: number;
+  /** 室內台 */
+  power_w?: number;
+  /** 跑步步頻 */
+  cadence_spm?: number;
+  rpe?: number;
+  note?: string;
+  source: 'HEALTH' | 'MANUAL';
+  /** 健康 App 原始運動名稱 (例如 Hiking) */
+  hk_type?: string;
+}
+
+/** 肌力訓練的手錶數據 (kind = HEALTH，掛在重訓習慣、同一天) */
+export interface HealthPayload {
+  duration_min: number;
+  kcal?: number;
+  avg_hr?: number;
+  max_hr?: number;
+  hk_type?: string;
 }

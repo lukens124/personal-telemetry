@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
+import { CardioBench } from './pages/CardioBench';
 import { CoffeeBench } from './pages/CoffeeBench';
 import { LogHome } from './pages/LogHome';
 import { NewHabitSheet } from './pages/NewHabitSheet';
@@ -43,6 +44,7 @@ export function App() {
       {route.name === 'log' && <LogHome />}
       {route.name === 'workout' && <WorkoutBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
       {route.name === 'settings' && <Settings />}
+      {route.name === 'cardio' && <CardioBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
       {route.name === 'coffee' && <CoffeeBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
       {route.name === 'simple' && <SimpleBench key={route.entryId ?? 'new'} habitId={route.habitId} entryId={route.entryId} />}
 

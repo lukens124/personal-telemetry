@@ -35,6 +35,15 @@
 | WORKOUT | 重訓 | 課表 (可綁星期) | `exercises[{name, sets[{kg, reps}]}]`，sub_mode = MAIN / DELOAD |
 | COFFEE | 咖啡 | 豆單 (sub_mode = POUR_OVER / ESPRESSO) | `grinder, temp_c, grind, ratio, rating, flavors, note` |
 | READING | 閱讀、英文 | 書 / 來源 (ACTIVE / ARCHIVED) | `nature (INSIGHT/STATUS/CHUNK), text, example, page, tags` |
-| GENERIC | 騎車、日記、自建分類 | 選用 (騎車 = 路線/主題) | `values{…}` (依 config.fields) + `text` |
+| GENERIC | 日記、自建分類 | 選用 | `values{…}` (依 config.fields) + `text` |
+| CARDIO | 有氧 (原「騎車」) | 路線 / 主題 | sub_mode = ROAD / INDOOR / RUN / OTHER；`duration_min, distance_km, kcal, avg_hr, max_hr, power_w, cadence_spm, rpe, note, source (HEALTH/MANUAL), hk_type` |
 
-騎車：TRACK、週四/週六、欄位為距離 (km) 與時間 (分鐘)，路線以容器管理 (環台北、巴拉卡公路…)。
+有氧：TRACK、週四/週六。舊的 GENERIC「騎車」開機時自動遷移成 CARDIO（紀錄與路線保留）。
+
+## Apple 健康匯入 (v4.2)
+
+- iOS 捷徑每晚 23:30 掃過去 2 天的 Apple Watch 運動，每筆 POST `action: health_workout` 到 GAS（設定見 `docs/HEALTH_SHORTCUT.md`）。
+- ID = `hk_` + 開始時間 (YYYYMMDDHHMMSS)，重送回 `DUPLICATE`；使用者刪除後也不會被重新匯入。
+- 騎車 / 跑步 / 其他 → CARDIO 的 ENTRY；騎車沒有距離 = 室內台。並寫入當天 CHECKIN (完成)。
+- 肌力訓練 → 重訓習慣的 `kind = HEALTH` 列 (時間、熱量、心率)，並打卡；不算重訓 ENTRY，不推進 N:M。
+- 由 GAS 直接寫入 Habit_Logs，App 透過既有增量同步拉下來；RPE 等補充為選填，不主動提醒。

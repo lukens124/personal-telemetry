@@ -11,6 +11,7 @@ export type Route =
   | { name: 'workout'; habitId: string; entryId?: string }
   | { name: 'simple'; habitId: string; entryId?: string }
   | { name: 'coffee'; habitId: string; entryId?: string }
+  | { name: 'cardio'; habitId: string; entryId?: string }
   | { name: 'settings' };
 
 export interface Nav {

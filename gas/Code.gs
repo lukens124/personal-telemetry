@@ -14,6 +14,12 @@
  * 回應：
  *   { ok, server_time, changes: {...since 之後有變動的列}, counts }
  * 合併規則：同 id 以 updated_at 較新者為準 (last-write-wins)。
+ *
+ * Apple 健康匯入 (iOS 捷徑，每次一筆運動)：
+ *   { token, action: "health_workout", type, start, end, distance_km, kcal, avg_hr, max_hr }
+ *   start / end：ISO 8601 (例如 2026-11-27T07:00:00+08:00)
+ *   以開始時間為唯一鍵，重複送出不會重複寫入。
+ *   騎車 / 跑步 / 其他 → 有氧紀錄並自動打卡；肌力訓練 → 掛在當天重訓的手錶數據。
  */
 
 var TABLES = {
@@ -87,6 +93,7 @@ function doPost(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var now = Date.now();
+    if (body.action === 'health_workout') return json_(healthWorkout_(ss, body, now));
     var since = Number(body.since) || 0;
     var changes = body.changes || {};
     var out = {};
@@ -131,6 +138,134 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ---------------------------------------------------------------- Apple 健康匯入
+
+var SPORT_LABEL = { ROAD: '公路車', INDOOR: '室內台', RUN: '跑步', OTHER: '其他' };
+
+/** 健康 App 運動名稱 → 分類 (與 App 端 classifyHealthWorkout 相同) */
+function classify_(name, km) {
+  var n = String(name || '').toLowerCase();
+  if (/strength|肌力|重量訓練|functional|功能性/.test(n)) return 'STRENGTH';
+  if (/cycl|bik|騎|單車|自行車/.test(n)) return /indoor|室內/.test(n) || !km || km < 0.1 ? 'INDOOR' : 'ROAD';
+  if (/run|跑/.test(n)) return 'RUN';
+  return 'OTHER';
+}
+
+/** 捷徑送來的數字可能是文字、帶單位或千分位：「25.3 km」「1,234」「25,3」 */
+function num_(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  var s = String(v).trim();
+  var meters = /\d\s*m$/.test(s) && !/km$/i.test(s);
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?/.test(s)) s = s.replace(/,/g, '');
+  else s = s.replace(',', '.');
+  var x = parseFloat(s.replace(/[^\d.\-]/g, ''));
+  if (!isFinite(x)) return null;
+  return meters ? x / 1000 : x;
+}
+
+function round1_(x) {
+  return Math.round(x * 10) / 10;
+}
+
+function fmtDur_(min) {
+  var t = Math.round(min), h = Math.floor(t / 60), m = t % 60;
+  return h > 0 ? h + 'h' + (m < 10 ? '0' : '') + m + 'm' : m + 'm';
+}
+
+/** 與 App 端 cardioSummary 相同格式 */
+function cardioSummary_(sport, p) {
+  var parts = [sport === 'OTHER' && p.hk_type ? p.hk_type : SPORT_LABEL[sport]];
+  if (p.duration_min) parts.push(fmtDur_(p.duration_min));
+  if (p.distance_km) parts.push(round1_(p.distance_km) + 'km');
+  if (sport === 'RUN' && p.distance_km && p.duration_min) {
+    var sec = Math.round((p.duration_min * 60) / p.distance_km);
+    parts.push(Math.floor(sec / 60) + "'" + (sec % 60 < 10 ? '0' : '') + (sec % 60) + '"/km');
+  }
+  if (p.avg_hr) parts.push('♥' + p.avg_hr);
+  return parts.join(' · ');
+}
+
+function findHabit_(ss, engine) {
+  var rows = readRows_(ensureSheet_(ss, TABLES.habits), TABLES.habits)
+    .map(function (r) { return r.obj; })
+    .filter(function (h) { return h.engine_type === engine && Number(h.deleted) === 0; })
+    .sort(function (a, b) { return a.sort_order - b.sort_order; });
+  return rows[0] || null;
+}
+
+function healthWorkout_(ss, b, now) {
+  var start = String(b.start || '').trim();
+  var m = start.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?(.*)$/);
+  if (!m) return { ok: false, error: 'BAD_START', detail: '開始時間需為 ISO 8601，例如 2026-11-27T07:00:00+08:00' };
+  var localDate = m[1];
+  var tz = /^[+-]\d{2}:?\d{2}$|^Z$/.test(m[4]) ? m[4] : '+08:00';
+  if (/^[+-]\d{4}$/.test(tz)) tz = tz.slice(0, 3) + ':' + tz.slice(3);
+  var timestamp = localDate + 'T' + m[2] + (m[3] || ':00') + tz;
+
+  var startMs = new Date(timestamp).getTime();
+  var endMs = b.end ? new Date(String(b.end).trim()).getTime() : NaN;
+  var duration = isFinite(endMs) && endMs > startMs ? (endMs - startMs) / 60000 : num_(b.duration_min);
+  if (!duration) return { ok: false, error: 'BAD_DURATION', detail: '需要結束時間或 duration_min' };
+
+  var km = num_(b.distance_km);
+  var kcal = num_(b.kcal);
+  var avg = num_(b.avg_hr);
+  var max = num_(b.max_hr);
+  var type = String(b.type || '').trim();
+  var sport = classify_(type, km);
+
+  var habit = findHabit_(ss, sport === 'STRENGTH' ? 'WORKOUT' : 'CARDIO');
+  if (!habit) return { ok: false, error: 'NO_HABIT', detail: '找不到' + (sport === 'STRENGTH' ? '重訓' : '有氧') + '項目，請先開啟 App 同步一次' };
+
+  var t = TABLES.logs;
+  var sheet = ensureSheet_(ss, t);
+  var rows = readRows_(sheet, t);
+  var index = {};
+  rows.forEach(function (r, i) { index[r.obj.log_id] = i; });
+
+  var id = 'hk_' + timestamp.replace(/\D/g, '').slice(0, 14);
+  if (index[id] !== undefined) return { ok: true, status: 'DUPLICATE', id: id };
+
+  var p = { duration_min: round1_(duration) };
+  if (sport !== 'STRENGTH' && sport !== 'INDOOR' && km) p.distance_km = Math.round(km * 100) / 100;
+  if (kcal) p.kcal = Math.round(kcal);
+  if (avg) p.avg_hr = Math.round(avg);
+  if (max) p.max_hr = Math.round(max);
+  if (sport === 'STRENGTH' || sport === 'OTHER') p.hk_type = type;
+  if (sport !== 'STRENGTH') p.source = 'HEALTH';
+
+  var summary = sport === 'STRENGTH'
+    ? '⌚ ' + fmtDur_(p.duration_min) + (p.kcal ? ' · ' + p.kcal + ' kcal' : '') + (p.avg_hr ? ' · ♥' + p.avg_hr : '')
+    : cardioSummary_(sport, p);
+
+  rows.push({
+    obj: {
+      log_id: id, habit_id: habit.habit_id, kind: sport === 'STRENGTH' ? 'HEALTH' : 'ENTRY',
+      sub_mode: sport === 'STRENGTH' ? null : sport, container_id: null,
+      timestamp: timestamp, local_date: localDate, visual_flag: null, summary_text: summary, payload: p,
+      created_at: now, updated_at: now, deleted: 0,
+    },
+    ts: now,
+  });
+
+  // 有運動 = 當天打卡完成 (與 App 的「儲存即完成」規則一致)
+  var ckId = 'ck_' + habit.habit_id + '_' + localDate;
+  var ck = index[ckId] !== undefined ? rows[index[ckId]].obj : null;
+  if (!ck || Number(ck.deleted) === 1 || Number(ck.visual_flag) !== 1) {
+    var obj = {
+      log_id: ckId, habit_id: habit.habit_id, kind: 'CHECKIN', sub_mode: null, container_id: null,
+      timestamp: timestamp, local_date: localDate, visual_flag: 1, summary_text: '', payload: ck ? ck.payload : null,
+      created_at: ck ? ck.created_at : now, updated_at: now, deleted: 0,
+    };
+    if (ck) rows[index[ckId]] = { obj: obj, ts: now };
+    else rows.push({ obj: obj, ts: now });
+  }
+
+  writeRows_(sheet, t, rows);
+  return { ok: true, status: 'IMPORTED', id: id, category: sport, summary: summary };
 }
 
 // ---------------------------------------------------------------- helpers

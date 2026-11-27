@@ -12,7 +12,8 @@ import {
   trackDashboard,
   workoutCycle,
 } from '../data/repo';
-import { FLAG_DONE, FLAG_SKIP, type Habit, type HabitLog } from '../data/types';
+import { FLAG_DONE, FLAG_SKIP, type Habit, type HabitLog, type HealthPayload } from '../data/types';
+import { cardioWeek, fmtDuration } from '../logic/cardio';
 import type { WeekRow } from '../logic/grid';
 import { summarize } from '../logic/summary';
 import { haptic, useNav, useRowGesture } from '../ui/kit';
@@ -42,6 +43,12 @@ interface ItemView {
   badge?: string;
 }
 
+function healthLine(p: HealthPayload): string {
+  return [fmtDuration(p.duration_min), p.kcal ? `${Math.round(p.kcal)} kcal` : '', p.avg_hr ? `♥${p.avg_hr}` : '']
+    .filter(Boolean)
+    .join(' · ');
+}
+
 async function describe(habit: Habit, now: Date): Promise<{ detail: string; badge?: string }> {
   const today = toLocalDate(now);
   const entries = await listEntries(db, habit.habit_id);
@@ -51,10 +58,15 @@ async function describe(habit: Habit, now: Date): Promise<{ detail: string; badg
     case 'WORKOUT': {
       const cyc = await workoutCycle(db, habit);
       const badge = cyc.suggested === 'MAIN' ? `🔥主訓 ${cyc.position}/${cyc.of}` : `🔋減載 ${cyc.position}/${cyc.of}`;
+      const health = (await db.logs.where('[habit_id+local_date]').equals([habit.habit_id, today]).toArray()).find(
+        (l) => l.kind === 'HEALTH' && l.deleted === 0,
+      );
+      const watch = health ? `　⌚ ${healthLine(health.payload as unknown as HealthPayload)}` : '';
       if (todays) {
         const c = todays.container_id ? await db.containers.get(todays.container_id) : null;
-        return { detail: `今日：${c?.name ?? ''} ${todays.summary_text}`.trim(), badge };
+        return { detail: `今日：${c?.name ?? ''} ${todays.summary_text}`.trim() + watch, badge };
       }
+      if (health) return { detail: `今日手錶：${healthLine(health.payload as unknown as HealthPayload)}`, badge };
       const wd = isoWeekday(today);
       const bound = await findBoundContainer(db, habit.habit_id, wd);
       if (!bound) return { detail: '今天沒有綁定課表，點右側選擇', badge };
@@ -66,6 +78,11 @@ async function describe(habit: Habit, now: Date): Promise<{ detail: string; badg
       if (todays) return { detail: `今日：${todays.summary_text}` };
       const active = (await listContainers(db, habit.habit_id))[0];
       return { detail: active ? `進行中：${active.name}` : '點右側新增書籍或來源' };
+    }
+    case 'CARDIO': {
+      // 本週累計已在上方摘要卡片顯示
+      if (todays) return { detail: `今日：${todays.summary_text}` };
+      return { detail: entries[0] ? `上次：${entries[0].summary_text}` : '運動完會自動從 Apple 健康匯入' };
     }
     default: {
       if (todays) return { detail: `今日：${todays.summary_text}` };
@@ -96,7 +113,9 @@ export function TrackHome() {
         .filter((h) => !inList.has(h.habit_id))
         .map((h) => toView(h, undefined, rows.find((r) => r.habit_id === h.habit_id)!)),
     );
-    return { rows, items, others, habits: all };
+    const cardio = all.find((h) => h.engine_type === 'CARDIO');
+    const week = cardio ? cardioWeek(await listEntries(db, cardio.habit_id), todayKey) : null;
+    return { rows, items, others, habits: all, cardio, week };
   }, [todayKey]);
 
   const [showOthers, setShowOthers] = useState(false);
@@ -137,6 +156,18 @@ export function TrackHome() {
           );
         })}
       </section>
+
+      {data.cardio && data.week && (
+        <button class="card" style={{ width: '100%', textAlign: 'left', display: 'block', marginTop: '12px' }}
+          onClick={() => nav.go(benchRoute(data.cardio!))} aria-label="本週有氧，點擊查看">
+          <span class="field-label">{data.cardio.icon} 本週有氧（{data.week.count} 次）</span>
+          <div class="stat-row">
+            <div><span class="v">{Math.round((data.week.minutes / 60) * 10) / 10}</span><span class="u">hr</span><div class="k">時間</div></div>
+            <div><span class="v">{data.week.km}</span><span class="u">km</span><div class="k">距離</div></div>
+            <div><span class="v">{data.week.kcal}</span><span class="u">kcal</span><div class="k">動態熱量</div></div>
+          </div>
+        </button>
+      )}
 
       <div class="section-title">
         <span>今日清單</span>

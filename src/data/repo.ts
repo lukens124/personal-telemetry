@@ -217,7 +217,7 @@ export async function saveEntry(db: TelemetryDB, habit: Habit, input: EntryInput
     timestamp: toIsoWithOffset(at),
     local_date: toLocalDate(at),
     visual_flag: null,
-    summary_text: summarize(habit, container, input.payload),
+    summary_text: summarize(habit, container, input.payload, input.sub_mode ?? container?.sub_mode ?? null),
     payload: input.payload,
   };
 
@@ -255,7 +255,7 @@ export async function updateEntry(
   if (!alive(cur)) throw new Error(`entry ${log_id} not found`);
   const next = { ...cur, ...patch };
   const container = next.container_id ? ((await db.containers.get(next.container_id)) ?? null) : null;
-  await db.logs.update(log_id, { ...patch, summary_text: summarize(habit, container, next.payload), ...touch(now) });
+  await db.logs.update(log_id, { ...patch, summary_text: summarize(habit, container, next.payload, next.sub_mode), ...touch(now) });
 }
 
 export async function deleteEntry(db: TelemetryDB, log_id: string, now: Date): Promise<void> {
@@ -294,7 +294,7 @@ export async function timeline(db: TelemetryDB, filterHabitId?: string): Promise
   const habits = await listHabits(db);
   const visible = new Set(
     habits
-      .filter((h) => h.category_tab === 'LOG' || h.engine_type === 'READING')
+      .filter((h) => h.category_tab === 'LOG' || h.engine_type === 'READING' || h.engine_type === 'CARDIO')
       .filter((h) => !filterHabitId || h.habit_id === filterHabitId)
       .map((h) => h.habit_id),
   );

@@ -24,7 +24,7 @@ export function LogHome() {
 
   const data = useLiveQuery(async () => {
     const habits = await listHabits(db);
-    const visible = habits.filter((h) => h.category_tab === 'LOG' || h.engine_type === 'READING');
+    const visible = habits.filter((h) => h.category_tab === 'LOG' || h.engine_type === 'READING' || h.engine_type === 'CARDIO');
     const logs = await timeline(db, filter ?? undefined);
     const containers = await db.containers.toArray();
     return { habits, visible, logs, containers: new Map(containers.map((c) => [c.container_id, c])) };
@@ -147,6 +147,7 @@ function TimelineRow({ log, habit, container }: { log: HabitLog; habit: Habit | 
         <span>
           {tag && <span class="tag">{tag}</span>}
           {log.summary_text || '（無內容）'}
+          {(log.payload as { source?: string } | null)?.source === 'HEALTH' && <> <span class="badge">Apple 健康</span></>}
         </span>
         <span class="time">{time}</span>
       </div>

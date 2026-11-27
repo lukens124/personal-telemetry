@@ -1,21 +1,26 @@
-/* 深色工程藍圖 — 藍圖墨水底、格線、粉筆青標記 */
+/* 暖紙張手帳風 — 燕麥紙底 × 森林綠 */
 :root {
-  --bg: #0d1a2b;
-  --panel: #13243a;
-  --panel-2: #182d48;
-  --line: #22395a;
-  --line-strong: #31517b;
-  --ink: #e4ecf4;
-  --dim: #7f96b0;
-  --done: #7fd1e6;
-  --miss: #e3a64b;
-  --danger: #e36b6b;
-  --r-sm: 6px;
-  --r-md: 12px;
+  --bg: #f3efe6; /* 燕麥紙底 */
+  --panel: #fcfbf7; /* 卡片 */
+  --panel-2: #eae4d7; /* 輸入框 / 凹陷區 */
+  --input: #eae4d7;
+  --line: rgba(45, 106, 79, 0.1);
+  --line-strong: rgba(45, 106, 79, 0.2);
+  --ink: #1f2923;
+  --dim: #5c6b62;
+  --done: #2d6a4f; /* 森林綠：主強調 */
+  --sage: #52796f;
+  --amber: #c27d38;
+  --miss: #a8652a; /* 琥珀加深，小字也看得清楚 */
+  --danger: #b5483b;
+  --on-accent: #fcfbf7;
+  --shadow: 0 4px 12px rgba(31, 41, 35, 0.05);
+  --r-sm: 10px;
+  --r-md: 16px;
   --tab-h: 58px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -28,7 +33,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: -apple-system, 'SF Pro Text', 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
+  font-family: ui-rounded, -apple-system, 'SF Pro Rounded', BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
@@ -37,22 +42,7 @@ body {
 }
 
 body {
-  /* 藍圖格紙底紋 */
-  background-image:
-    linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: -1px -1px;
-  background-attachment: fixed;
   min-height: 100dvh;
-}
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  pointer-events: none;
-  z-index: -1;
 }
 
 button,
@@ -112,8 +102,12 @@ button {
   font-size: 15px;
 }
 .icon-btn.primary {
-  color: var(--done);
+  color: var(--on-accent);
+  background: var(--done);
   font-weight: 600;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
 }
 
 .section-title {
@@ -150,9 +144,8 @@ button {
   font-weight: 600;
 }
 .tabbar button[aria-current='page'] {
-  color: var(--ink);
-  background: var(--panel-2);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--done);
+  background: color-mix(in srgb, var(--done) 10%, transparent);
 }
 
 /* ---------- 週網格 (主視覺) ---------- */
@@ -160,6 +153,7 @@ button {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--panel);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 .grid-head,
@@ -293,6 +287,7 @@ button {
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
+  box-shadow: var(--shadow);
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
@@ -367,6 +362,7 @@ button {
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
+  box-shadow: var(--shadow);
   padding: 14px;
 }
 .card + .card {
@@ -382,8 +378,8 @@ button {
 .text-input,
 textarea.text-input {
   width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--line-strong);
+  background: var(--input);
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
   padding: 10px 12px;
   min-height: 44px;
@@ -409,8 +405,8 @@ textarea.text-input {
   border-left: 1px solid var(--line-strong);
 }
 .seg button[aria-pressed='true'] {
-  background: var(--panel-2);
-  color: var(--ink);
+  background: var(--done);
+  color: var(--on-accent);
   font-weight: 600;
 }
 .chips {
@@ -428,8 +424,8 @@ textarea.text-input {
 }
 .chip[aria-pressed='true'] {
   border-color: var(--done);
-  color: var(--ink);
-  background: color-mix(in srgb, var(--done) 14%, transparent);
+  color: var(--on-accent);
+  background: var(--done);
 }
 .chip:disabled {
   opacity: 0.35;
@@ -560,7 +556,7 @@ textarea.text-input {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(4 10 18 / 0.6);
+  background: rgb(31 41 35 / 0.32);
   z-index: 40;
   display: flex;
   align-items: flex-end;
@@ -654,6 +650,7 @@ textarea.text-input {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   background: var(--panel);
+  box-shadow: var(--shadow);
   padding: 0 12px;
   margin-top: 8px;
 }
@@ -769,4 +766,77 @@ textarea.text-input {
 }
 .set-row.is-done .stepper {
   opacity: 1;
+}
+
+/* ---------- 淺色主題補強 ---------- */
+.select:focus,
+.text-input:focus,
+textarea.text-input:focus {
+  outline: none;
+  border-color: var(--done);
+  background: var(--panel);
+}
+.stepper {
+  background: var(--input);
+  border-color: transparent;
+}
+.stepper input {
+  border-color: var(--line-strong);
+}
+.chip {
+  background: color-mix(in srgb, var(--done) 7%, var(--panel));
+  border-color: transparent;
+}
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--done);
+  background: color-mix(in srgb, var(--sage) 16%, transparent);
+  vertical-align: 1px;
+}
+.badge.amber {
+  color: var(--miss);
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+}
+
+/* RPE 1–10 點選列 */
+.rpe-row {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+.rpe-row button {
+  height: 38px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--done) 9%, var(--panel));
+  color: var(--dim);
+  font-weight: 600;
+}
+.rpe-row button[aria-pressed='true'] {
+  background: var(--done);
+  color: var(--on-accent);
+}
+
+/* 本週有氧摘要 */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.stat-row .v {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.stat-row .u {
+  font-size: 13px;
+  color: var(--dim);
+  margin-left: 2px;
+}
+.stat-row .k {
+  font-size: 12px;
+  color: var(--dim);
 }

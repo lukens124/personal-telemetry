@@ -36,12 +36,12 @@ beforeEach(async () => {
 
 describe('seed', () => {
   it('建立 4 個追蹤 + 2 個紀錄項目，且不重複 seed', async () => {
-    expect((await listHabits(db, 'TRACK')).map((h) => h.name)).toEqual(['重訓', '閱讀與筆記', '英文語塊', '騎車']);
+    expect((await listHabits(db, 'TRACK')).map((h) => h.name)).toEqual(['重訓', '閱讀與筆記', '英文語塊', '有氧']);
     expect((await listHabits(db, 'LOG')).map((h) => h.name)).toEqual(['咖啡', '日記']);
     expect(await seedIfEmpty(db)).toBe(false);
   });
-  it('騎車排在週四、週六，有兩條路線', async () => {
-    const bike = await habit('騎車');
+  it('有氧排在週四、週六，有兩條路線', async () => {
+    const bike = await habit('有氧');
     expect(bike.schedule_days).toEqual([4, 6]);
     expect((await listContainers(db, bike.habit_id)).map((c) => c.name)).toEqual(['環台北', '巴拉卡公路']);
   });
@@ -160,17 +160,18 @@ describe('重訓工作台與 N:M', () => {
   });
 });
 
-describe('騎車 (GENERIC + 路線)', () => {
+describe('有氧 (CARDIO + 路線)', () => {
   it('週四出現在今日清單；儲存後摘要含路線/距離/時間並完成打卡', async () => {
-    const bike = await habit('騎車');
+    const bike = await habit('有氧');
     const { today } = await trackDashboard(db, THU);
-    expect(today.map((t) => t.habit.name)).toContain('騎車');
+    expect(today.map((t) => t.habit.name)).toContain('有氧');
     const route = (await listContainers(db, bike.habit_id)).find((c) => c.name === '巴拉卡公路')!;
     const e = await saveEntry(db, bike, {
       container_id: route.container_id,
-      payload: { values: { distance_km: 62.5, duration_min: 155 }, text: '' },
+      sub_mode: 'ROAD',
+      payload: { duration_min: 155, distance_km: 62.5, avg_hr: 142, source: 'MANUAL' },
     }, THU);
-    expect(e.summary_text).toBe('巴拉卡公路 · 62.5km · 2h35m');
+    expect(e.summary_text).toBe('公路車 · 巴拉卡公路 · 2h35m · 62.5km · ♥142');
     expect((await getCheckin(db, bike.habit_id, '2026-10-22'))?.visual_flag).toBe(1);
   });
 });

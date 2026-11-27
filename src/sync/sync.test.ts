@@ -166,9 +166,9 @@ describe('同步', () => {
     await syncNow(ipad, server.transport);
 
     // iPad 記一筆騎車
-    const bike = await habitBy(ipad, '騎車');
+    const bike = await habitBy(ipad, '有氧');
     const route = (await listContainers(ipad, bike.habit_id))[1];
-    await saveEntry(ipad, bike, { container_id: route.container_id, payload: { values: { distance_km: 60, duration_min: 150 } } }, WED);
+    await saveEntry(ipad, bike, { container_id: route.container_id, sub_mode: 'ROAD', payload: { duration_min: 150, distance_km: 60, source: 'MANUAL' } }, WED);
     // 手機改了重訓名稱 (較早)，iPad 也改 (較晚)
     const gymP = await habitBy(phone, '重訓');
     await updateHabit(phone, gymP.habit_id, { name: '重訓-手機' }, new Date('2026-10-21T08:00:00+08:00'));
@@ -179,7 +179,7 @@ describe('同步', () => {
 
     // 手機收到 iPad 的騎車紀錄
     const phoneBikeLogs = (await phone.logs.toArray()).filter((l) => l.habit_id === bike.habit_id);
-    expect(phoneBikeLogs.map((l) => l.summary_text)).toContain('巴拉卡公路 · 60km · 2h30m');
+    expect(phoneBikeLogs.map((l) => l.summary_text)).toContain('公路車 · 巴拉卡公路 · 2h30m · 60km');
     // 名稱以較晚的 iPad 為準
     expect((await phone.habits.get(gymP.habit_id))?.name).toBe('重訓-iPad');
     await syncNow(ipad, server.transport);
@@ -211,5 +211,52 @@ describe('同步', () => {
     const data = JSON.parse(await exportJson(phone));
     expect(data.habits).toHaveLength(6);
     expect(data.schema).toBe('4.1');
+  });
+
+  describe('Apple 健康匯入', () => {
+    const post = async (body: Record<string, unknown>) =>
+      (await server.transport('x', JSON.stringify({ token: server.token, action: 'health_workout', ...body }))) as unknown as Record<string, unknown>;
+
+    it('騎車：寫入有氧紀錄、自動打卡、同步到手機；重送不重複', async () => {
+      await syncNow(phone, server.transport); // 雲端要先有「有氧」項目
+      const ride = { type: '騎自行車', start: '2026-11-26T07:05:12+08:00', end: '2026-11-26T08:53:12+08:00', distance_km: '45.36 km', kcal: '1,012', avg_hr: '138.6', max_hr: 171 };
+      const r = await post(ride);
+      expect(r).toMatchObject({ ok: true, status: 'IMPORTED', category: 'ROAD', summary: '公路車 · 1h48m · 45.4km · ♥139' });
+      expect(await post(ride)).toMatchObject({ ok: true, status: 'DUPLICATE' });
+
+      await syncNow(phone, server.transport);
+      const cardio = await habitBy(phone, '有氧');
+      const logs = (await phone.logs.toArray()).filter((l) => l.habit_id === cardio.habit_id && l.deleted === 0);
+      const entry = logs.find((l) => l.kind === 'ENTRY')!;
+      expect(entry).toMatchObject({ sub_mode: 'ROAD', local_date: '2026-11-26', timestamp: '2026-11-26T07:05:12+08:00', dirty: 0 });
+      expect(entry.payload).toEqual({ duration_min: 108, distance_km: 45.36, kcal: 1012, avg_hr: 139, max_hr: 171, source: 'HEALTH' });
+      // App 端的摘要格式與雲端一致
+      const { cardioSummary } = await import('../logic/cardio');
+      expect(entry.summary_text).toBe(cardioSummary('ROAD', null, entry.payload as never));
+      expect(logs.find((l) => l.kind === 'CHECKIN')?.visual_flag).toBe(1);
+    });
+
+    it('室內台沒有距離；肌力訓練掛在重訓並打卡', async () => {
+      await syncNow(phone, server.transport);
+      expect(await post({ type: 'Indoor Cycling', start: '2026-11-25T20:00:00+08:00', end: '2026-11-25T21:00:00+08:00', kcal: 600 }))
+        .toMatchObject({ category: 'INDOOR', summary: '室內台 · 1h00m' });
+      expect(await post({ type: 'Traditional Strength Training', start: '2026-11-24T19:00:00+08:00', end: '2026-11-24T19:52:00+08:00', kcal: 310, avg_hr: 128 }))
+        .toMatchObject({ category: 'STRENGTH', summary: '⌚ 52m · 310 kcal · ♥128' });
+
+      await syncNow(phone, server.transport);
+      const gym = await habitBy(phone, '重訓');
+      const health = (await phone.logs.toArray()).find((l) => l.habit_id === gym.habit_id && l.kind === 'HEALTH')!;
+      expect(health.payload).toMatchObject({ duration_min: 52, kcal: 310, avg_hr: 128 });
+      const ck = (await phone.logs.toArray()).find((l) => l.log_id === `ck_${gym.habit_id}_2026-11-24`);
+      expect(ck?.visual_flag).toBe(1);
+      // 肌力數據不算重訓紀錄 (不推進 N:M)
+      expect((await phone.logs.toArray()).filter((l) => l.habit_id === gym.habit_id && l.kind === 'ENTRY')).toHaveLength(0);
+    });
+
+    it('格式錯誤與未同步時回報清楚的錯誤', async () => {
+      expect(await post({ type: 'Running', start: '昨天', end: '' })).toMatchObject({ ok: false, error: 'BAD_START' });
+      expect(await post({ type: 'Running', start: '2026-11-26T07:00:00+08:00' })).toMatchObject({ ok: false, error: 'BAD_DURATION' });
+      expect(await post({ type: 'Running', start: '2026-11-26T07:00:00+08:00', duration_min: 30 })).toMatchObject({ ok: false, error: 'NO_HABIT' });
+    });
   });
 });

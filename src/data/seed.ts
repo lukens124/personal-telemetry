@@ -4,7 +4,7 @@
  */
 import type { TelemetryDB } from './db';
 import { createContainer, createHabit } from './repo';
-import type { CoffeeConfig, GenericConfig, ReadingConfig, WorkoutConfig, WorkoutPayload } from './types';
+import type { CardioConfig, CoffeeConfig, GenericConfig, ReadingConfig, WorkoutConfig, WorkoutPayload } from './types';
 
 /** GENERIC 日記的首次模板 (之後自動沿用上一次的文字結構) */
 export const DIARY_DEFAULT_TEMPLATE = '【今日狀態】\n\n【關鍵決策 / 思維筆記】\n';
@@ -107,28 +107,21 @@ export async function seedIfEmpty(db: TelemetryDB, now = new Date()): Promise<bo
     );
     await createContainer(db, { habit_id: english.habit_id, name: '日常語塊' }, now);
 
-    const bike = await createHabit(
+    const cardio = await createHabit(
       db,
       {
-        name: '騎車',
+        name: '有氧',
         icon: '🚴',
         category_tab: 'TRACK',
-        engine_type: 'GENERIC',
+        engine_type: 'CARDIO',
         schedule_days: [4, 6],
         weekly_target: 2,
-        config: {
-          fields: [
-            { key: 'distance_km', label: '距離', type: 'number', unit: 'km', step: 1 },
-            { key: 'duration_min', label: '時間', type: 'duration' },
-          ],
-          has_text: true,
-          container_label: '路線 / 主題',
-        } satisfies GenericConfig,
+        config: { container_label: '路線 / 主題' } satisfies CardioConfig,
       },
       now,
     );
-    await createContainer(db, { habit_id: bike.habit_id, name: '環台北' }, now);
-    await createContainer(db, { habit_id: bike.habit_id, name: '巴拉卡公路' }, now);
+    await createContainer(db, { habit_id: cardio.habit_id, name: '環台北' }, now);
+    await createContainer(db, { habit_id: cardio.habit_id, name: '巴拉卡公路' }, now);
 
     // ---------------- LOG ----------------
     const coffee = await createHabit(
