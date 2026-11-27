@@ -10,6 +10,7 @@
  * 新裝置首次同步：若本地沒有任何紀錄、雲端已有資料 → 直接以雲端資料還原 (避免預設樣板重複)。
  */
 import type { TelemetryDB } from '../data/db';
+import { dedupeHabits, migrateBikeToCardio } from '../data/migrate';
 import type { Container, Habit, HabitLog } from '../data/types';
 
 export type TableName = 'habits' | 'containers' | 'logs';
@@ -108,21 +109,38 @@ export async function syncNow(db: TelemetryDB, transport: Transport = fetchTrans
 
     // 新裝置：本地沒有紀錄 → 先看雲端有沒有資料可以還原
     if (since === 0) {
+      const probe = await post(transport, cfg, 0, emptyRows());
+      const cloudHasData = (probe.counts?.habits ?? 0) > 0;
       const localLogs = await db.logs.count();
-      if (localLogs === 0) {
-        const probe = await post(transport, cfg, 0, emptyRows());
-        if ((probe.counts?.habits ?? 0) > 0) {
-          await db.transaction('rw', db.habits, db.containers, db.logs, async () => {
-            for (const t of TABLES) {
-              await db.table(t).clear();
-              await db.table(t).bulkPut(probe.changes[t].map((r) => ({ ...r, dirty: 0 })));
+
+      // 新裝置：本地沒有紀錄 → 直接以雲端資料還原
+      if (cloudHasData && localLogs === 0) {
+        await db.transaction('rw', db.habits, db.containers, db.logs, async () => {
+          for (const t of TABLES) {
+            await db.table(t).clear();
+            await db.table(t).bulkPut(probe.changes[t].map((r) => ({ ...r, dirty: 0 })));
+          }
+        });
+        await migrateBikeToCardio(db);
+        await setMeta(db, 'last_server_ts', probe.server_time);
+        await setMeta(db, 'last_sync_at', Date.now());
+        const pulled = TABLES.reduce((n, t) => n + probe.changes[t].length, 0);
+        return { status: 'OK', pushed: 0, pulled, restored: true };
+      }
+
+      // 兩邊都有資料 (各自建立過預設項目) → 先把雲端資料併進本地，再合併同名項目
+      if (cloudHasData) {
+        await db.transaction('rw', db.habits, db.containers, db.logs, async () => {
+          for (const t of TABLES) {
+            const table = db.table(t);
+            for (const r of probe.changes[t]) {
+              const local = (await table.get(r[KEYS[t]] as string)) as Row | undefined;
+              if (!local || Number(r.updated_at) > local.updated_at) await table.put({ ...r, dirty: 0 });
             }
-          });
-          await setMeta(db, 'last_server_ts', probe.server_time);
-          await setMeta(db, 'last_sync_at', Date.now());
-          const pulled = TABLES.reduce((n, t) => n + probe.changes[t].length, 0);
-          return { status: 'OK', pushed: 0, pulled, restored: true };
-        }
+          }
+        });
+        await migrateBikeToCardio(db);
+        await dedupeHabits(db);
       }
     }
 

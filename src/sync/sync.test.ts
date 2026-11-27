@@ -259,4 +259,65 @@ describe('同步', () => {
       expect(await post({ type: 'Running', start: '2026-11-26T07:00:00+08:00', duration_min: 30 })).toMatchObject({ ok: false, error: 'NO_HABIT' });
     });
   });
+
+  describe('兩台裝置各自建立過預設項目 (首次連線合併)', () => {
+    it('合併同名項目、保留兩邊紀錄、舊騎車轉有氧，其他裝置也一致', async () => {
+      // 電腦：舊版 (騎車為 GENERIC) + 一筆英文語塊，先連上雲端
+      const pc = newDb();
+      await seedIfEmpty(pc, TUE);
+      const pcCardio = await habitBy(pc, '有氧');
+      await pc.habits.update(pcCardio.habit_id, {
+        name: '騎車', engine_type: 'GENERIC',
+        config: { fields: [{ key: 'distance_km', label: '距離', type: 'number' }, { key: 'duration_min', label: '時間', type: 'duration' }], has_text: true, container_label: '路線 / 主題' },
+      });
+      const pcEng = await habitBy(pc, '英文語塊');
+      const chunk = (await listContainers(pc, pcEng.habit_id))[0];
+      const note = await saveEntry(pc, pcEng, { container_id: chunk.container_id, payload: { nature: 'CHUNK', text: 'I have an apple' } }, TUE);
+      const fresh = loadGas();
+      await setConfig(pc, { url: 'x', token: fresh.token });
+      await syncNow(pc, fresh.transport);
+
+      // 手機：另一套預設項目 + 自己的紀錄，從沒連過
+      const ph = newDb();
+      await seedIfEmpty(ph, WED);
+      const phGym = await habitBy(ph, '重訓');
+      await quickCheckin(ph, phGym, WED);
+      const phEng = await habitBy(ph, '英文語塊');
+      await quickCheckin(ph, phEng, TUE); // 同一天兩邊都有英文打卡
+      await setConfig(ph, { url: 'x', token: fresh.token });
+      expect((await syncNow(ph, fresh.transport)).status).toBe('OK');
+
+      const alive = async (db: TelemetryDB) => (await db.habits.toArray()).filter((h) => h.deleted === 0).map((h) => h.name).sort();
+      const SIX = ['咖啡', '日記', '有氧', '英文語塊', '重訓', '閱讀與筆記'].sort();
+      expect(await alive(ph)).toEqual(SIX);
+
+      // 英文筆記掛在合併後唯一的英文語塊、唯一的「日常語塊」底下
+      const eng = await habitBy(ph, '英文語塊');
+      const moved = await ph.logs.get(note.log_id);
+      expect(moved?.habit_id).toBe(eng.habit_id);
+      expect((await listContainers(ph, eng.habit_id)).map((c) => c.name)).toEqual(['日常語塊']);
+      expect(moved?.container_id).toBe((await listContainers(ph, eng.habit_id))[0].container_id);
+      // 同一天的打卡只剩一筆
+      const engCk = (await ph.logs.toArray()).filter((l) => l.kind === 'CHECKIN' && l.habit_id === eng.habit_id && l.deleted === 0 && l.local_date === '2026-10-20');
+      expect(engCk).toHaveLength(1);
+      // 重訓課表沒有重複，星期綁定不變
+      const courses = await listContainers(ph, (await habitBy(ph, '重訓')).habit_id);
+      expect(courses.map((c) => [c.name, c.bound_weekdays])).toEqual([['背腹菜單', [1]], ['腿日菜單', [2]], ['胸肩腹菜單', [3]]]);
+      expect(await pendingCount(ph)).toBe(0);
+
+      // 雲端與其他裝置一致
+      await syncNow(pc, fresh.transport);
+      expect(await alive(pc)).toEqual(SIX);
+      expect((await pc.logs.get(note.log_id))?.habit_id).toBe(eng.habit_id);
+      const ipad = newDb();
+      await setConfig(ipad, { url: 'x', token: fresh.token });
+      await syncNow(ipad, fresh.transport);
+      expect(await alive(ipad)).toEqual(SIX);
+      expect((await ipad.logs.toArray()).filter((l) => l.kind === 'ENTRY' && l.deleted === 0).map((l) => l.summary_text)).toContain('I have an apple');
+
+      // 再同步一次：沒有新的合併、沒有殘留待上傳
+      const again = await syncNow(ph, fresh.transport);
+      expect(again).toMatchObject({ status: 'OK', pushed: 0 });
+    });
+  });
 });

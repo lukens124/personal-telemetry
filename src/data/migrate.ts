@@ -51,3 +51,72 @@ export async function migrateBikeToCardio(db: TelemetryDB, now = new Date()): Pr
   });
   return n;
 }
+
+/**
+ * 合併重複項目：同名、同引擎的習慣只留一個 (紀錄最多者)，其餘的紀錄、清單項目搬過去後標記刪除。
+ * 用於兩台裝置各自建立了預設項目、第一次連到同一份雲端時。回傳被合併的習慣數。
+ */
+export async function dedupeHabits(db: TelemetryDB, now = new Date()): Promise<number> {
+  const t = now.getTime();
+  const touch = { updated_at: t, dirty: 1 as const };
+  const habits = (await db.habits.toArray()).filter((h) => h.deleted === 0);
+  const groups = new Map<string, Habit[]>();
+  for (const h of habits) {
+    const k = `${h.name}|${h.engine_type}`;
+    groups.set(k, [...(groups.get(k) ?? []), h]);
+  }
+
+  let merged = 0;
+  await db.transaction('rw', db.habits, db.containers, db.logs, async () => {
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const entryCount = async (h: Habit) =>
+        (await db.logs.where('[habit_id+kind]').equals([h.habit_id, 'ENTRY']).toArray()).filter((l) => l.deleted === 0).length;
+      const counts = await Promise.all(group.map(entryCount));
+      const order = group.map((h, i) => ({ h, n: counts[i] })).sort((a, b) => b.n - a.n || a.h.created_at - b.h.created_at);
+      const keeper = order[0].h;
+
+      for (const { h: dup } of order.slice(1)) {
+        // 清單項目：同名合併，不同名搬過去
+        const keepC = (await db.containers.where('habit_id').equals(keeper.habit_id).toArray()).filter((c) => c.deleted === 0);
+        const usedDays = new Set(keepC.flatMap((c) => c.bound_weekdays));
+        const cmap = new Map<string, string>();
+        for (const c of (await db.containers.where('habit_id').equals(dup.habit_id).toArray()).filter((x) => x.deleted === 0)) {
+          const same = keepC.find((k) => k.name === c.name);
+          if (same) {
+            cmap.set(c.container_id, same.container_id);
+            await db.containers.update(c.container_id, { deleted: 1, ...touch });
+          } else {
+            await db.containers.update(c.container_id, {
+              habit_id: keeper.habit_id,
+              bound_weekdays: c.bound_weekdays.filter((d) => !usedDays.has(d)),
+              ...touch,
+            });
+          }
+        }
+        // 紀錄
+        for (const l of (await db.logs.where('habit_id').equals(dup.habit_id).toArray()).filter((x) => x.deleted === 0)) {
+          if (l.kind === 'CHECKIN') {
+            const newId = `ck_${keeper.habit_id}_${l.local_date}`;
+            const existing = await db.logs.get(newId);
+            if (!existing || existing.deleted === 1) {
+              await db.logs.put({ ...l, ...touch, log_id: newId, habit_id: keeper.habit_id, deleted: 0, created_at: existing?.created_at ?? l.created_at });
+            } else if (existing.visual_flag !== 1 && l.visual_flag === 1) {
+              await db.logs.update(newId, { visual_flag: 1, ...touch });
+            }
+            await db.logs.update(l.log_id, { deleted: 1, ...touch });
+          } else {
+            await db.logs.update(l.log_id, {
+              habit_id: keeper.habit_id,
+              container_id: l.container_id ? (cmap.get(l.container_id) ?? l.container_id) : null,
+              ...touch,
+            });
+          }
+        }
+        await db.habits.update(dup.habit_id, { deleted: 1, ...touch });
+        merged++;
+      }
+    }
+  });
+  return merged;
+}
